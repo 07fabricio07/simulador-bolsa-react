@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/simulador-bolsa-react/static/css/main.e6c13ad2.css",
+    "main.js": "/simulador-bolsa-react/static/js/main.3bbefd70.js",
+    "static/js/453.da09fe86.chunk.js": "/simulador-bolsa-react/static/js/453.da09fe86.chunk.js",
+    "index.html": "/simulador-bolsa-react/index.html",
+    "main.e6c13ad2.css.map": "/simulador-bolsa-react/static/css/main.e6c13ad2.css.map",
+    "main.3bbefd70.js.map": "/simulador-bolsa-react/static/js/main.3bbefd70.js.map",
+    "453.da09fe86.chunk.js.map": "/simulador-bolsa-react/static/js/453.da09fe86.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.e6c13ad2.css",
+    "static/js/main.3bbefd70.js"
+  ]
+}
