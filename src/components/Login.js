@@ -13,10 +13,13 @@ export default function Login({ onLogin }) {
     setLoading(true);
 
     try {
-      const res = await axios.post("http://localhost:10000/api/auth/login", {
-        usuario,
-        password,
-      });
+      const res = await axios.post(
+        `${process.env.REACT_APP_BACKEND_URL}/api/auth/login`,
+        {
+          usuario,
+          password,
+        }
+      );
       setLoading(false);
       // Guarda el token en localStorage y llama a onLogin
       localStorage.setItem("token", res.data.token);
