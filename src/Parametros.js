@@ -1,26 +1,36 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
 
-export default function Parametros({
-  momento, duracion, estado,
-  setMomento, setDuracion, setEstado,
-  iniciarSimulacion, pararSimulacion
-}) {
-  // Estados para la mini pestaña de edición
+export default function Parametros() {
+  const [parametros, setParametros] = useState({ momento: 0, duracionMomento: 0, estado: 'en pausa' });
   const [editOpen, setEditOpen] = useState(false);
-  const [momentoEdit, setMomentoEdit] = useState(momento);
-  const [duracionEdit, setDuracionEdit] = useState(duracion);
+  const [momentoEdit, setMomentoEdit] = useState(0);
+  const [duracionEdit, setDuracionEdit] = useState(0);
 
-  // Sincroniza valores editables al abrir
-  const handleOpenEdit = () => {
-    setMomentoEdit(momento);
-    setDuracionEdit(duracion);
-    setEditOpen(true);
-  };
+  // Cargar valores actuales desde el backend
+  useEffect(() => {
+    axios.get(`${process.env.REACT_APP_BACKEND_URL}/api/parametros-simulacion`)
+      .then(res => {
+        setParametros(res.data);
+        setMomentoEdit(res.data.momento);
+        setDuracionEdit(res.data.duracionMomento);
+      })
+      .catch(() => setParametros({ momento: 0, duracionMomento: 0, estado: 'en pausa' }));
+  }, [editOpen]);
 
-  const handleSendEdit = () => {
-    setMomento(Number(momentoEdit));
-    setDuracion(Number(duracionEdit));
-    setEditOpen(false);
+  const handleOpenEdit = () => setEditOpen(true);
+  const handleCloseEdit = () => setEditOpen(false);
+
+  const handleSendEdit = (e) => {
+    e.preventDefault();
+    axios.put(`${process.env.REACT_APP_BACKEND_URL}/api/parametros-simulacion`, {
+      momento: Number(momentoEdit),
+      duracionMomento: Number(duracionEdit),
+      estado: parametros.estado
+    }).then(res => {
+      setParametros(res.data);
+      setEditOpen(false);
+    });
   };
 
   return (
@@ -36,19 +46,13 @@ export default function Parametros({
         </thead>
         <tbody>
           <tr>
-            <td style={{ border: "1px solid #ccc", padding: "0.5em", textAlign: "center" }}>{momento}</td>
-            <td style={{ border: "1px solid #ccc", padding: "0.5em", textAlign: "center" }}>{duracion}</td>
-            <td style={{ border: "1px solid #ccc", padding: "0.5em", textAlign: "center" }}>{estado}</td>
+            <td style={{ border: "1px solid #ccc", padding: "0.5em", textAlign: "center" }}>{parametros.momento}</td>
+            <td style={{ border: "1px solid #ccc", padding: "0.5em", textAlign: "center" }}>{parametros.duracionMomento}</td>
+            <td style={{ border: "1px solid #ccc", padding: "0.5em", textAlign: "center" }}>{parametros.estado}</td>
           </tr>
         </tbody>
       </table>
-
-      <div style={{ display: "flex", gap: "1em", marginBottom: "2em" }}>
-        <button onClick={handleOpenEdit}>Modificar valores de la tabla</button>
-        <button onClick={iniciarSimulacion} disabled={estado === "jugando" || duracion <= 0}>Iniciar simulación</button>
-        <button onClick={pararSimulacion} disabled={estado === "en pausa"}>Parar simulación</button>
-      </div>
-
+      <button onClick={handleOpenEdit}>Modificar valores de la tabla</button>
       {editOpen && (
         <div style={{
           position: "fixed",
@@ -71,48 +75,20 @@ export default function Parametros({
             position: "relative"
           }}>
             <h3>Modificar valores</h3>
-            <div style={{ marginBottom: "1em" }}>
-              <label>
-                Momento:&nbsp;
-                <input
-                  type="number"
-                  value={momentoEdit}
-                  onChange={e => setMomentoEdit(e.target.value)}
-                  style={{ width: "80px" }}
-                />
-              </label>
-            </div>
-            <div style={{ marginBottom: "1em" }}>
-              <label>
-                Duración del momento:&nbsp;
-                <input
-                  type="number"
-                  min={1}
-                  value={duracionEdit}
-                  onChange={e => setDuracionEdit(e.target.value)}
-                  style={{ width: "80px" }}
-                />
-              </label>
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button onClick={handleSendEdit}>Enviar</button>
-            </div>
-            <button
-              onClick={() => setEditOpen(false)}
-              style={{
-                position: "absolute",
-                top: "8px",
-                right: "10px",
-                background: "none",
-                border: "none",
-                fontSize: "1.2em",
-                color: "#888",
-                cursor: "pointer"
-              }}
-              title="Cerrar"
-            >
-              ×
-            </button>
+            <form onSubmit={handleSendEdit}>
+              <div style={{ marginBottom: "1em" }}>
+                <label>Momento:&nbsp;
+                  <input type="number" value={momentoEdit} onChange={e => setMomentoEdit(e.target.value)} style={{ width: "80px" }} />
+                </label>
+              </div>
+              <div style={{ marginBottom: "1em" }}>
+                <label>Duración del momento:&nbsp;
+                  <input type="number" value={duracionEdit} onChange={e => setDuracionEdit(e.target.value)} style={{ width: "80px" }} />
+                </label>
+              </div>
+              <button type="submit">Enviar</button>
+              <button type="button" onClick={handleCloseEdit} style={{ marginLeft: "1em" }}>Cancelar</button>
+            </form>
           </div>
         </div>
       )}
