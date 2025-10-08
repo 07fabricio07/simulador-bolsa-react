@@ -6,6 +6,7 @@ export default function Parametros() {
   const [editOpen, setEditOpen] = useState(false);
   const [momentoEdit, setMomentoEdit] = useState(0);
   const [duracionEdit, setDuracionEdit] = useState(0);
+  const [loading, setLoading] = useState(false);
 
   // Cargar valores actuales desde el backend
   useEffect(() => {
@@ -21,16 +22,21 @@ export default function Parametros() {
   const handleOpenEdit = () => setEditOpen(true);
   const handleCloseEdit = () => setEditOpen(false);
 
-  const handleSendEdit = (e) => {
+  const handleSendEdit = async (e) => {
     e.preventDefault();
-    axios.put(`${process.env.REACT_APP_BACKEND_URL}/api/parametros-simulacion`, {
-      momento: Number(momentoEdit),
-      duracionMomento: Number(duracionEdit),
-      estado: parametros.estado
-    }).then(res => {
+    setLoading(true);
+    try {
+      const res = await axios.put(`${process.env.REACT_APP_BACKEND_URL}/api/parametros-simulacion`, {
+        momento: Number(momentoEdit),
+        duracionMomento: Number(duracionEdit),
+        estado: parametros.estado
+      });
       setParametros(res.data);
       setEditOpen(false);
-    });
+    } catch (error) {
+      alert("Error al enviar los datos. Intenta de nuevo.");
+    }
+    setLoading(false);
   };
 
   return (
@@ -86,7 +92,7 @@ export default function Parametros() {
                   <input type="number" value={duracionEdit} onChange={e => setDuracionEdit(e.target.value)} style={{ width: "80px" }} />
                 </label>
               </div>
-              <button type="submit">Enviar</button>
+              <button type="submit" disabled={loading}>{loading ? "Enviando..." : "Enviar"}</button>
               <button type="button" onClick={handleCloseEdit} style={{ marginLeft: "1em" }}>Cancelar</button>
             </form>
           </div>
