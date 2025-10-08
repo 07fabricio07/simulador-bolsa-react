@@ -30,6 +30,12 @@ export default function BaseDeDatos({ intencionesVenta, comprasEnProceso = [], p
   useEffect(() => {
     const interval = setInterval(() => {
       setTick(t => t + 1);
+      // Si tienes endpoint, descomenta y ajusta aquí la consulta al backend
+      // const token = localStorage.getItem("token");
+      // axios.get("http://localhost:10000/api/intenciones-venta", { headers: { Authorization: "Bearer " + token } })
+      //   .then(res => actualizarIntencionesVenta(res.data));
+      // axios.get("http://localhost:10000/api/compras-en-proceso", { headers: { Authorization: "Bearer " + token } })
+      //   .then(res => actualizarComprasEnProceso(res.data));
     }, 1000);
     return () => clearInterval(interval);
   }, []);

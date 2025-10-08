@@ -5,14 +5,7 @@ import MiPortafolio from "./MiPortafolio";
 import Parametros from "./Parametros";
 import BaseDeDatos from "./BaseDeDatos";
 import Informacion from "./Informacion";
-
-const usuarios = [
-  { id: 1, usuario: "jugador1", nombre: "Jugador Uno", rol: "jugador" },
-  { id: 2, usuario: "jugador2", nombre: "Jugador Dos", rol: "jugador" },
-  { id: 3, usuario: "jugador3", nombre: "Jugador Tres", rol: "jugador" },
-  { id: 4, usuario: "jugador4", nombre: "Jugador Cuatro", rol: "jugador" },
-  { id: 5, usuario: "admin", nombre: "Administrador", rol: "admin" },
-];
+import Login from "./components/Login";
 
 function Tab({ label, active, onClick }) {
   return (
@@ -33,7 +26,7 @@ function Tab({ label, active, onClick }) {
 }
 
 function App() {
-  const [usuarioActual, setUsuarioActual] = useState(usuarios[0]);
+  const [usuarioActual, setUsuarioActual] = useState(null);
   const [activeTab, setActiveTab] = useState(0);
 
   // Estados globales para parámetros
@@ -130,29 +123,33 @@ function App() {
     { label: "Información", content: <Informacion {...informacionProps} /> }
   ];
 
+  // LOGOUT FUNCTION
+  function handleLogout() {
+    localStorage.removeItem("token");
+    setUsuarioActual(null);
+    setActiveTab(0);
+  }
+
+  // Solo muestra la app si hay usuario logueado, si no, muestra Login
+  if (!usuarioActual) {
+    return (
+      <Login onLogin={setUsuarioActual} />
+    );
+  }
+
   const esJugador = usuarioActual.rol === "jugador";
   const tabs = esJugador ? jugadorTabs : adminTabs;
 
   return (
     <div style={{ maxWidth: 800, margin: "auto" }}>
       <h1>Plataforma virtual</h1>
-      <label>
-        Usuario activo:&nbsp;
-        <select
-          value={usuarioActual.usuario}
-          onChange={e => {
-            const usuario = usuarios.find(u => u.usuario === e.target.value);
-            setUsuarioActual(usuario);
-            setActiveTab(0);
-          }}
-        >
-          {usuarios.map(u => (
-            <option key={u.usuario} value={u.usuario}>
-              {u.nombre} ({u.rol})
-            </option>
-          ))}
-        </select>
-      </label>
+      <p>
+        Usuario activo: <b>{usuarioActual.nombre} ({usuarioActual.usuario})</b> &nbsp; | Rol: <b>{usuarioActual.rol}</b>
+        &nbsp; 
+        <button onClick={handleLogout} style={{ marginLeft: "1em", padding: "0.3em 0.6em", cursor: "pointer" }}>
+          Cerrar sesión
+        </button>
+      </p>
       <hr />
       <div style={{ display: "flex", borderBottom: "2px solid #ccc", marginBottom: "1em" }}>
         {tabs.map((tab, idx) => (

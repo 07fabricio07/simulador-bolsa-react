@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import axios from "axios";
 
 // Calcula el ticket como Math.floor(segundosDesdeMedianoche / 3) + 1
 function calcularTicket(horaCreacionStr) {
@@ -37,6 +38,20 @@ export default function CompraVentaAcciones({
   const [compraModal, setCompraModal] = useState(null);
   const [cantidadComprar, setCantidadComprar] = useState("");
   const [errorComprar, setErrorComprar] = useState("");
+
+  // POLLING: Actualiza intencionesVenta y comprasEnProceso cada segundo (si tienes backend)
+  // Puedes ajustar aquí el polling para tu backend real si lo implementas
+  // Si tu lógica ya se actualiza correctamente con el estado global, puedes borrar o dejar comentado esto
+  // useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     // const token = localStorage.getItem("token");
+  //     // axios.get("http://localhost:10000/api/intenciones-venta", { headers: { Authorization: "Bearer " + token } })
+  //     //   .then(res => actualizarIntencionesVenta(res.data));
+  //     // axios.get("http://localhost:10000/api/compras-en-proceso", { headers: { Authorization: "Bearer " + token } })
+  //     //   .then(res => actualizarComprasEnProceso(res.data));
+  //   }, 1000);
+  //   return () => clearInterval(interval);
+  // }, []);
 
   useEffect(() => { setError(""); }, [accionSeleccionada, cantidad, precio]);
 
@@ -200,7 +215,7 @@ export default function CompraVentaAcciones({
       ticket: ticket,
       horaEjecucion: horaEjecucionStr,
       estado: "pendiente",
-      momento: momento // <-- CORREGIDO: ahora también se agrega el campo momento
+      momento: momento
     });
     cerrarCompraModal();
   };
