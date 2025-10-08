@@ -2,7 +2,6 @@
   "name": "simulador-bolsa",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://07fabricio07.github.io/simulador-bolsa-react",
   "dependencies": {
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.8.0",
