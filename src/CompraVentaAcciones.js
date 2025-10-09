@@ -39,19 +39,19 @@ export default function CompraVentaAcciones({
   const [cantidadComprar, setCantidadComprar] = useState("");
   const [errorComprar, setErrorComprar] = useState("");
 
-  // POLLING: Actualiza intencionesVenta y comprasEnProceso cada segundo (si tienes backend)
-  // Puedes ajustar aquí el polling para tu backend real si lo implementas
-  // Si tu lógica ya se actualiza correctamente con el estado global, puedes borrar o dejar comentado esto
-  // useEffect(() => {
-  //   const interval = setInterval(() => {
-  //     // const token = localStorage.getItem("token");
-  //     // axios.get("http://localhost:10000/api/intenciones-venta", { headers: { Authorization: "Bearer " + token } })
-  //     //   .then(res => actualizarIntencionesVenta(res.data));
-  //     // axios.get("http://localhost:10000/api/compras-en-proceso", { headers: { Authorization: "Bearer " + token } })
-  //     //   .then(res => actualizarComprasEnProceso(res.data));
-  //   }, 1000);
-  //   return () => clearInterval(interval);
-  // }, []);
+  // Estado para sincronizar intenciones de venta del backend
+  const [intencionesVentaBackend, setIntencionesVentaBackend] = useState([]);
+
+  // POLLING: Actualiza intencionesVenta desde backend cada segundo
+  useEffect(() => {
+    const interval = setInterval(() => {
+      axios
+        .get(`${process.env.REACT_APP_BACKEND_URL}/api/intenciones-venta`)
+        .then(res => setIntencionesVentaBackend(res.data))
+        .catch(() => setIntencionesVentaBackend([]));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => { setError(""); }, [accionSeleccionada, cantidad, precio]);
 
@@ -59,48 +59,56 @@ export default function CompraVentaAcciones({
   const esPrecioValido = precio !== "" && Number(precio) > 0 && !isNaN(Number(precio));
   const esAccionValida = accionSeleccionada !== "";
 
-  // Publicar intención de venta
-  const handlePublicar = () => {
+  // Publicar intención de venta: guarda en el backend
+  const handlePublicar = async () => {
     if (!esAccionValida || !esCantidadValida || !esPrecioValido) {
       setError("Completa todos los campos con datos válidos.");
       return;
     }
     const ahora = new Date();
-    agregarIntencionVenta({
-      accion: accionSeleccionada,
-      cantidad: Number(cantidad),
-      precio: Number(precio),
-      ofertante: usuarioActual.nombre,
-      horaCreacion: ahora.toLocaleString(),
-      actualizacion: ahora.toLocaleString(),
-      momento: momento,
-    });
-    setAccionSeleccionada("");
-    setCantidad("");
-    setPrecio("");
-    setError("");
+    try {
+      await axios.post(
+        `${process.env.REACT_APP_BACKEND_URL}/api/intenciones-venta`,
+        {
+          accion: accionSeleccionada,
+          cantidadTotal: Number(cantidad),
+          precio: Number(precio),
+          ofertante: usuarioActual.nombre,
+          horaCreacion: ahora.toLocaleTimeString(),
+          horaActualizacion: ahora.toLocaleTimeString(),
+          momento: momento,
+        }
+      );
+      setAccionSeleccionada("");
+      setCantidad("");
+      setPrecio("");
+      setError("");
+      // Se actualiza la lista en el siguiente polling
+    } catch (e) {
+      setError("Error al publicar la intención de venta.");
+    }
   };
 
   // Intenciones de venta del jugador actual agrupadas por ID
-  const misIntencionesRaw = intencionesVenta.filter(
-    (item) => item.ofertante === usuarioActual.nombre
+  const misIntencionesRaw = intencionesVentaBackend.filter(
+    item => item.ofertante === usuarioActual.nombre
   );
   const agrupacionMis = {};
-  misIntencionesRaw.forEach((item) => {
-    if (!agrupacionMis[item.id]) {
-      agrupacionMis[item.id] = {
+  misIntencionesRaw.forEach(item => {
+    if (!agrupacionMis[item._id]) {
+      agrupacionMis[item._id] = {
         accion: item.accion,
         precio: item.precio,
-        cantidad: item.cantidad,
-        id: item.id
+        cantidadTotal: item.cantidadTotal,
+        id: item._id
       };
     } else {
-      agrupacionMis[item.id].cantidad += item.cantidad;
+      agrupacionMis[item._id].cantidadTotal += item.cantidadTotal;
     }
   });
-  const misIntencionesAgrupadas = Object.values(agrupacionMis).filter(item => item.cantidad !== 0);
+  const misIntencionesAgrupadas = Object.values(agrupacionMis).filter(item => item.cantidadTotal !== 0);
 
-  // Función para anular una intención agrupada
+  // Función para anular una intención agrupada (original, sigue igual)
   const handleAnular = (item) => {
     const ahora = new Date();
     agregarIntencionVenta({
@@ -115,7 +123,7 @@ export default function CompraVentaAcciones({
     });
   };
 
-  // Función para anular todas las intenciones disponibles
+  // Función para anular todas las intenciones disponibles (original, sigue igual)
   const handleAnularTodas = () => {
     const ahora = new Date();
     misIntencionesAgrupadas.forEach(item => {
@@ -134,17 +142,17 @@ export default function CompraVentaAcciones({
 
   // Intenciones de venta disponibles para comprar (de otros jugadores)
   const idAgrupacion = {};
-  intencionesVenta.forEach((item) => {
-    if (!idAgrupacion[item.id]) {
-      idAgrupacion[item.id] = {
+  intencionesVentaBackend.forEach((item) => {
+    if (!idAgrupacion[item._id]) {
+      idAgrupacion[item._id] = {
         accion: item.accion,
         precio: item.precio,
-        cantidad: item.cantidad,
-        id: item.id,
+        cantidad: item.cantidadTotal,
+        id: item._id,
         ofertante: item.ofertante
       };
     } else {
-      idAgrupacion[item.id].cantidad += item.cantidad;
+      idAgrupacion[item._id].cantidad += item.cantidadTotal;
     }
   });
   const intencionesPorId = Object.values(idAgrupacion).filter(item => item.cantidad !== 0);
@@ -203,7 +211,7 @@ export default function CompraVentaAcciones({
       return;
     }
     const ahora = new Date();
-    const horaCreacionStr = ahora.toLocaleTimeString("en-GB"); // HH:mm:ss, 24h
+    const horaCreacionStr = ahora.toLocaleTimeString("en-GB");
     const ticket = calcularTicket(horaCreacionStr);
     const horaEjecucionStr = calcularHoraEjecucion(ticket);
     agregarCompraEnProceso({
@@ -286,7 +294,7 @@ export default function CompraVentaAcciones({
               <tr key={item.id}>
                 <td style={{ border: "1px solid #ccc", padding: "0.5em" }}>{item.accion}</td>
                 <td style={{ border: "1px solid #ccc", padding: "0.5em" }}>{item.precio}</td>
-                <td style={{ border: "1px solid #ccc", padding: "0.5em" }}>{item.cantidad}</td>
+                <td style={{ border: "1px solid #ccc", padding: "0.5em" }}>{item.cantidadTotal}</td>
                 <td style={{ border: "1px solid #ccc", padding: "0.5em" }}>
                   <button
                     style={{ padding: "0.3em 1em" }}

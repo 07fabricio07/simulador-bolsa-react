@@ -1,40 +1,63 @@
 import React, { useState, useEffect } from "react";
+import axios from "axios";
 
-export default function Informacion({
-  cantidadAcciones,
-  setCantidadAcciones,
-  nombresAcciones,
-  setNombresAcciones
-}) {
+export default function Informacion() {
+  const [cantidadAcciones, setCantidadAcciones] = useState(1);
   const [editCantidadOpen, setEditCantidadOpen] = useState(false);
-  const [cantidadEdit, setCantidadEdit] = useState(cantidadAcciones);
+  const [cantidadEdit, setCantidadEdit] = useState(1);
 
+  const [nombresAcciones, setNombresAcciones] = useState([]);
   const [editNombresOpen, setEditNombresOpen] = useState(false);
-  const [nombresEdit, setNombresEdit] = useState([...nombresAcciones]);
+  const [nombresEdit, setNombresEdit] = useState([]);
 
+  // Leer cantidad desde backend
   useEffect(() => {
-    setNombresEdit([...nombresAcciones]);
-  }, [nombresAcciones, cantidadAcciones]);
+    axios.get(`${process.env.REACT_APP_BACKEND_URL}/api/cantidad-acciones`)
+      .then(res => {
+        setCantidadAcciones(res.data.cantidad || 1);
+        setCantidadEdit(res.data.cantidad || 1);
+      })
+      .catch(() => setCantidadAcciones(1));
+  }, []);
 
+  // Leer nombres de acciones desde backend
+  useEffect(() => {
+    axios.get(`${process.env.REACT_APP_BACKEND_URL}/api/acciones-juego`)
+      .then(res => {
+        const nombres = res.data.map(accion => accion.nombre);
+        setNombresAcciones(nombres);
+        setNombresEdit(nombres);
+      }).catch(() => {
+        setNombresAcciones([]);
+        setNombresEdit([]);
+      });
+  }, [cantidadAcciones]);
+
+  // Enviar nueva cantidad al backend
   const handleCantidadSend = () => {
     const nuevaCantidad = Math.max(1, Number(cantidadEdit));
-    setCantidadAcciones(nuevaCantidad);
-    setNombresAcciones((prev) => {
-      const nuevos = [...prev];
-      while (nuevos.length < nuevaCantidad) nuevos.push("");
-      if (nuevos.length > nuevaCantidad) nuevos.length = nuevaCantidad;
-      return nuevos;
-    });
+    axios.post(`${process.env.REACT_APP_BACKEND_URL}/api/cantidad-acciones`, { cantidad: nuevaCantidad })
+      .then(() => setCantidadAcciones(nuevaCantidad));
     setEditCantidadOpen(false);
   };
 
+  // Abrir edición de nombres
   const handleAbrirNombres = () => {
     setNombresEdit([...nombresAcciones]);
     setEditNombresOpen(true);
   };
 
+  // Enviar nombres al backend
   const handleNombresSend = () => {
-    setNombresAcciones([...nombresEdit]);
+    const accionesArray = Array.from({ length: cantidadAcciones }).map((_, i) => ({
+      numero: i + 1,
+      nombre: nombresEdit[i] || "",
+      columnaExtra1: "",
+      columnaExtra2: "",
+      columnaExtra3: ""
+    }));
+    axios.post(`${process.env.REACT_APP_BACKEND_URL}/api/acciones-juego`, accionesArray)
+      .then(() => setNombresAcciones(nombresEdit));
     setEditNombresOpen(false);
   };
 
