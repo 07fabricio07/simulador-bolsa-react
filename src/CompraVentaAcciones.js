@@ -3,7 +3,7 @@ import axios from "axios";
 
 // Calcula el ticket como Math.floor(segundosDesdeMedianoche / 3) + 1
 function calcularTicket(horaCreacionStr) {
-  let horaStr = horaCreacionStr.split(" ")[1] || horaCreacionStr; // por si viene con fecha
+  let horaStr = horaCreacionStr.split(" ")[1] || horaCreacionStr;
   let [hh, mm, ss] = horaStr.split(":").map(v => parseInt(v, 10));
   if (isNaN(hh)) hh = 0;
   if (isNaN(mm)) mm = 0;
@@ -12,7 +12,6 @@ function calcularTicket(horaCreacionStr) {
   return Math.floor(totalSegundos / 3) + 1;
 }
 
-// Hora de ejecución: 00:00:00 + ticket*3 segundos
 function calcularHoraEjecucion(ticket) {
   const segundos = ticket * 3;
   const hh = Math.floor(segundos / 3600);
@@ -22,34 +21,46 @@ function calcularHoraEjecucion(ticket) {
 }
 
 export default function CompraVentaAcciones({
-  acciones,
   momento,
   usuarioActual,
-  agregarIntencionVenta,
-  intencionesVenta,
   agregarCompraEnProceso
 }) {
+  const [acciones, setAcciones] = useState([]);
   const [accionSeleccionada, setAccionSeleccionada] = useState("");
   const [cantidad, setCantidad] = useState("");
   const [precio, setPrecio] = useState("");
   const [error, setError] = useState("");
-
-  // Modal de compra
   const [compraModal, setCompraModal] = useState(null);
   const [cantidadComprar, setCantidadComprar] = useState("");
   const [errorComprar, setErrorComprar] = useState("");
+  const [intencionesVenta, setIntencionesVenta] = useState([]);
 
-  // Estado para sincronizar intenciones de venta del backend
-  const [intencionesVentaBackend, setIntencionesVentaBackend] = useState([]);
-
-  // POLLING: Actualiza intencionesVenta desde backend cada segundo
+  // Polling cada segundo para acciones del juego (desplegable)
   useEffect(() => {
-    const interval = setInterval(() => {
+    const obtenerAcciones = () => {
+      axios
+        .get(`${process.env.REACT_APP_BACKEND_URL}/api/acciones-juego`)
+        .then(res => {
+          const nombres = res.data.map(a => a.nombre).filter(n => n && n.trim() !== "");
+          setAcciones(nombres);
+        })
+        .catch(() => setAcciones([]));
+    };
+    obtenerAcciones();
+    const interval = setInterval(obtenerAcciones, 1000); // actualiza cada segundo
+    return () => clearInterval(interval);
+  }, []);
+
+  // Polling cada segundo para intenciones de venta
+  useEffect(() => {
+    const obtenerIntencionesVenta = () => {
       axios
         .get(`${process.env.REACT_APP_BACKEND_URL}/api/intenciones-venta`)
-        .then(res => setIntencionesVentaBackend(res.data))
-        .catch(() => setIntencionesVentaBackend([]));
-    }, 1000);
+        .then(res => setIntencionesVenta(res.data))
+        .catch(() => setIntencionesVenta([]));
+    };
+    obtenerIntencionesVenta();
+    const interval = setInterval(obtenerIntencionesVenta, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -59,7 +70,7 @@ export default function CompraVentaAcciones({
   const esPrecioValido = precio !== "" && Number(precio) > 0 && !isNaN(Number(precio));
   const esAccionValida = accionSeleccionada !== "";
 
-  // Publicar intención de venta: guarda en el backend
+  // Publicar intención de venta en el backend
   const handlePublicar = async () => {
     if (!esAccionValida || !esCantidadValida || !esPrecioValido) {
       setError("Completa todos los campos con datos válidos.");
@@ -83,14 +94,13 @@ export default function CompraVentaAcciones({
       setCantidad("");
       setPrecio("");
       setError("");
-      // Se actualiza la lista en el siguiente polling
     } catch (e) {
       setError("Error al publicar la intención de venta.");
     }
   };
 
-  // Intenciones de venta del jugador actual agrupadas por ID
-  const misIntencionesRaw = intencionesVentaBackend.filter(
+  // Agrupar intenciones propias por ID
+  const misIntencionesRaw = intencionesVenta.filter(
     item => item.ofertante === usuarioActual.nombre
   );
   const agrupacionMis = {};
@@ -99,50 +109,44 @@ export default function CompraVentaAcciones({
       agrupacionMis[item._id] = {
         accion: item.accion,
         precio: item.precio,
-        cantidadTotal: item.cantidadTotal,
+        cantidad: item.cantidadTotal,
         id: item._id
       };
     } else {
-      agrupacionMis[item._id].cantidadTotal += item.cantidadTotal;
+      agrupacionMis[item._id].cantidad += item.cantidadTotal;
     }
   });
-  const misIntencionesAgrupadas = Object.values(agrupacionMis).filter(item => item.cantidadTotal !== 0);
+  const misIntencionesAgrupadas = Object.values(agrupacionMis).filter(item => item.cantidad !== 0);
 
-  // Función para anular una intención agrupada (original, sigue igual)
-  const handleAnular = (item) => {
+  // Función para anular una intención agrupada
+  const handleAnular = async (item) => {
     const ahora = new Date();
-    agregarIntencionVenta({
-      accion: item.accion,
-      cantidad: -item.cantidad,
-      precio: item.precio,
-      ofertante: usuarioActual.nombre,
-      horaCreacion: ahora.toLocaleString(),
-      actualizacion: ahora.toLocaleString(),
-      momento: momento,
-      forzarId: item.id
-    });
+    try {
+      await axios.post(
+        `${process.env.REACT_APP_BACKEND_URL}/api/intenciones-venta`,
+        {
+          accion: item.accion,
+          cantidadTotal: -item.cantidad,
+          precio: item.precio,
+          ofertante: usuarioActual.nombre,
+          horaCreacion: ahora.toLocaleTimeString(),
+          horaActualizacion: ahora.toLocaleTimeString(),
+          momento: momento,
+        }
+      );
+    } catch (e) {
+      setError("Error al anular la intención de venta.");
+    }
   };
 
-  // Función para anular todas las intenciones disponibles (original, sigue igual)
+  // Función para anular todas las intenciones agrupadas
   const handleAnularTodas = () => {
-    const ahora = new Date();
-    misIntencionesAgrupadas.forEach(item => {
-      agregarIntencionVenta({
-        accion: item.accion,
-        cantidad: -item.cantidad,
-        precio: item.precio,
-        ofertante: usuarioActual.nombre,
-        horaCreacion: ahora.toLocaleString(),
-        actualizacion: ahora.toLocaleString(),
-        momento: momento,
-        forzarId: item.id
-      });
-    });
+    misIntencionesAgrupadas.forEach(item => handleAnular(item));
   };
 
   // Intenciones de venta disponibles para comprar (de otros jugadores)
   const idAgrupacion = {};
-  intencionesVentaBackend.forEach((item) => {
+  intencionesVenta.forEach((item) => {
     if (!idAgrupacion[item._id]) {
       idAgrupacion[item._id] = {
         accion: item.accion,
@@ -200,7 +204,6 @@ export default function CompraVentaAcciones({
     setErrorComprar("");
   };
 
-  // Validación cantidad a comprar
   const esCantidadComprarValida = cantidadComprar !== "" && Number(cantidadComprar) > 0 &&
     Number(cantidadComprar) <= (compraModal ? compraModal.cantidad : 0) && !isNaN(Number(cantidadComprar));
 
@@ -247,10 +250,7 @@ export default function CompraVentaAcciones({
           min={1}
           placeholder="Cantidad"
           value={cantidad}
-          onChange={e => {
-            const val = e.target.value;
-            if (/^\d*$/.test(val)) setCantidad(val);
-          }}
+          onChange={e => setCantidad(e.target.value)}
           style={{ padding: "0.5em", width: 100 }}
         />
         <input
@@ -258,10 +258,7 @@ export default function CompraVentaAcciones({
           min={1}
           placeholder="Precio"
           value={precio}
-          onChange={e => {
-            const val = e.target.value;
-            if (/^\d*$/.test(val)) setPrecio(val);
-          }}
+          onChange={e => setPrecio(e.target.value)}
           style={{ padding: "0.5em", width: 100 }}
         />
         <button
@@ -294,7 +291,7 @@ export default function CompraVentaAcciones({
               <tr key={item.id}>
                 <td style={{ border: "1px solid #ccc", padding: "0.5em" }}>{item.accion}</td>
                 <td style={{ border: "1px solid #ccc", padding: "0.5em" }}>{item.precio}</td>
-                <td style={{ border: "1px solid #ccc", padding: "0.5em" }}>{item.cantidadTotal}</td>
+                <td style={{ border: "1px solid #ccc", padding: "0.5em" }}>{item.cantidad}</td>
                 <td style={{ border: "1px solid #ccc", padding: "0.5em" }}>
                   <button
                     style={{ padding: "0.3em 1em" }}
