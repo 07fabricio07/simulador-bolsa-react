@@ -1,20 +1,88 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
 
 export default function Parametros() {
   const [tablaMomentos, setTablaMomentos] = useState([]);
+  const [showModal, setShowModal] = useState(false);
+  const [momento, setMomento] = useState("");
+  const [duracion, setDuracion] = useState("");
+  const [simulacionActiva, setSimulacionActiva] = useState(false);
+  const intervalRef = useRef();
 
+  // Leer datos cada vez que cambian
   useEffect(() => {
-    const fetchTabla = async () => {
-      try {
-        const res = await axios.get(`${process.env.REACT_APP_BACKEND_URL}/api/tabla-momentos`);
-        setTablaMomentos(res.data.filas || []);
-      } catch (err) {
-        setTablaMomentos([]);
-      }
-    };
     fetchTabla();
-  }, []);
+    // Si la simulación está activa, refresca la tabla cada segundo
+    if (simulacionActiva) {
+      const interval = setInterval(fetchTabla, 1000);
+      intervalRef.current = interval;
+      return () => clearInterval(interval);
+    }
+  }, [simulacionActiva]);
+
+  // Leer datos de la tabla del backend
+  const fetchTabla = async () => {
+    try {
+      const res = await axios.get(`${process.env.REACT_APP_BACKEND_URL}/api/tabla-momentos`);
+      setTablaMomentos(res.data.filas || []);
+    } catch (err) {
+      setTablaMomentos([]);
+    }
+  };
+
+  // Filtrar columnas para no mostrar _id
+  const columnas = tablaMomentos.length > 0
+    ? Object.keys(tablaMomentos[0]).filter((col) => col !== "_id")
+    : [];
+
+  // Abrir modal para modificar datos
+  const handleOpenModal = () => {
+    // Por defecto, carga los datos actuales
+    setMomento(tablaMomentos[1]?.Momento ?? "");
+    setDuracion(tablaMomentos[1]?.DuracionDelMomento ?? "");
+    setShowModal(true);
+  };
+
+  // Cerrar modal
+  const handleCloseModal = () => {
+    setShowModal(false);
+  };
+
+  // Enviar datos modificados al backend
+  const handleEnviar = async () => {
+    try {
+      await axios.put(`${process.env.REACT_APP_BACKEND_URL}/api/tabla-momentos/modificar`, {
+        Momento: momento,
+        DuracionDelMomento: duracion
+      });
+      setShowModal(false);
+      fetchTabla();
+    } catch (err) {
+      alert("Error al modificar los datos");
+    }
+  };
+
+  // Iniciar simulación
+  const handleIniciar = async () => {
+    try {
+      await axios.post(`${process.env.REACT_APP_BACKEND_URL}/api/tabla-momentos/iniciar`);
+      setSimulacionActiva(true);
+      fetchTabla();
+    } catch (err) {
+      alert("Error al iniciar la simulación");
+    }
+  };
+
+  // Pausar simulación
+  const handlePausar = async () => {
+    try {
+      await axios.post(`${process.env.REACT_APP_BACKEND_URL}/api/tabla-momentos/pausar`);
+      setSimulacionActiva(false);
+      fetchTabla();
+    } catch (err) {
+      alert("Error al pausar la simulación");
+    }
+  };
 
   return (
     <div>
@@ -22,15 +90,15 @@ export default function Parametros() {
       <table style={{ borderCollapse: "collapse", marginTop: "1em" }}>
         <thead>
           <tr>
-            {tablaMomentos.length > 0 && Object.keys(tablaMomentos[0]).map((col, idx) => (
+            {columnas.map((col, idx) => (
               <th key={idx} style={{ border: "1px solid #ccc", padding: "0.5em" }}>{col}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {tablaMomentos.slice(1).map((fila, idxFila) => (
+          {tablaMomentos.map((fila, idxFila) => (
             <tr key={idxFila}>
-              {Object.keys(tablaMomentos[0]).map((col, idxCol) => (
+              {columnas.map((col, idxCol) => (
                 <td key={idxCol} style={{ border: "1px solid #ccc", padding: "0.5em" }}>
                   {fila[col]}
                 </td>
@@ -39,6 +107,55 @@ export default function Parametros() {
           ))}
         </tbody>
       </table>
+
+      {/* Botones debajo de la tabla */}
+      <div style={{ marginTop: "2em", display: "flex", gap: "1em" }}>
+        <button onClick={handleOpenModal}>Modificar datos</button>
+        <button onClick={handleIniciar} disabled={simulacionActiva}>Iniciar simulación</button>
+        <button onClick={handlePausar} disabled={!simulacionActiva}>Pausar simulación</button>
+      </div>
+
+      {/* Modal para modificar datos */}
+      {showModal && (
+        <div style={{
+          position: "fixed",
+          top: 0, left: 0, width: "100vw", height: "100vh",
+          background: "rgba(0,0,0,0.2)", display: "flex",
+          justifyContent: "center", alignItems: "center", zIndex: 999
+        }}>
+          <div style={{
+            background: "white", padding: "2em", borderRadius: "10px",
+            minWidth: "300px", position: "relative"
+          }}>
+            {/* Botón X para cerrar */}
+            <button onClick={handleCloseModal} style={{
+              position: "absolute", top: "8px", right: "8px", fontSize: "1.2em",
+              background: "none", border: "none", cursor: "pointer"
+            }}>✖</button>
+            <div>
+              <label>Inserte el momento:</label>
+              <input
+                type="number"
+                value={momento}
+                onChange={e => setMomento(e.target.value)}
+                style={{ width: "100%", marginBottom: "1em" }}
+              />
+            </div>
+            <div>
+              <label>Inserte duración del momento:</label>
+              <input
+                type="number"
+                value={duracion}
+                onChange={e => setDuracion(e.target.value)}
+                style={{ width: "100%", marginBottom: "2em" }}
+              />
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <button onClick={handleEnviar}>Enviar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
