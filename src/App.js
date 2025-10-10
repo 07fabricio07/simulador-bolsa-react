@@ -6,7 +6,8 @@ import Parametros from "./Parametros";
 import BaseDeDatos from "./BaseDeDatos";
 import Informacion from "./Informacion";
 import Login from "./components/Login";
-import PortafolioInicial from "./PortafolioInicial"; // <-- Importa la nueva pestaña
+import PortafolioInicial from "./PortafolioInicial";
+import PortafolioJugadores from "./PortafolioJugadores"; // <-- Agregado
 
 function Tab({ label, active, onClick }) {
   return (
@@ -117,12 +118,13 @@ function App() {
     { label: "Mi portafolio", content: <MiPortafolio /> },
   ];
 
-  // Tabs para admin
+  // Tabs para admin (mejorado)
   const adminTabs = [
     { label: "Parámetros", content: <Parametros {...parametrosProps} /> },
     { label: "Base de datos", content: <BaseDeDatos intencionesVenta={intencionesVenta} comprasEnProceso={comprasEnProceso}/> },
     { label: "Información", content: <Informacion {...informacionProps} /> },
-    { label: "Portafolio inicial", content: <PortafolioInicial /> } // <-- Nueva pestaña
+    { label: "Portafolio inicial", content: <PortafolioInicial /> },
+    { label: "Portafolio de Jugadores", content: <PortafolioJugadores /> }, // <--- NUEVO!
   ];
 
   // LOGOUT FUNCTION
