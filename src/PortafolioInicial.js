@@ -1,61 +1,44 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
 
 export default function PortafolioInicial() {
-  const [archivoCargando, setArchivoCargando] = useState(false);
   const [tabla, setTabla] = useState({ encabezados: [], filas: [] });
 
-  // Cargar la tabla de PortafolioInicial al montar el componente
   useEffect(() => {
-    cargarTabla();
+    const cargarPortafolio = async () => {
+      try {
+        const res = await axios.get(
+          `${process.env.REACT_APP_BACKEND_URL}/api/portafolio-inicial`
+        );
+        setTabla(res.data);
+      } catch (err) {
+        setTabla({ encabezados: [], filas: [] });
+      }
+    };
+    cargarPortafolio();
   }, []);
-
-  const cargarTabla = async () => {
-    try {
-      const res = await axios.get(
-        `${process.env.REACT_APP_BACKEND_URL}/api/portafolio-inicial`
-      );
-      setTabla(res.data);
-    } catch (err) {
-      setTabla({ encabezados: [], filas: [] });
-    }
-  };
-
-  const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const formData = new FormData();
-    formData.append('archivo', file);
-
-    setArchivoCargando(true);
-
-    try {
-      await axios.post(
-        `${process.env.REACT_APP_BACKEND_URL}/api/subir-excel-portafolio-inicial`,
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } }
-      );
-      alert("Archivo subido y procesado correctamente.");
-      await cargarTabla(); // Recargar la tabla después de subir el archivo
-    } catch (err) {
-      alert("Error al subir el archivo.");
-    } finally {
-      setArchivoCargando(false);
-    }
-  };
 
   return (
     <div>
       <h2>Portafolio inicial</h2>
-      <p>Sube el archivo Excel con el portafolio inicial de los jugadores:</p>
-      <input type="file" accept=".xlsx,.xls" onChange={handleFileChange} disabled={archivoCargando} />
       <hr />
       <div style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", marginTop: "1em" }}>
+        <table style={{ borderCollapse: "collapse", marginTop: "1em", minWidth: "600px" }}>
           <thead>
             <tr>
               {tabla.encabezados.map((enc, idx) => (
-                <th key={idx} style={{ border: "1px solid #ccc", padding: "0.5em" }}>{enc}</th>
+                <th
+                  key={idx}
+                  style={{
+                    border: "1px solid #bbb",
+                    padding: "0.7em",
+                    background: "#f6f6f6",
+                    textAlign: "center",
+                    fontWeight: "bold"
+                  }}
+                >
+                  {enc}
+                </th>
               ))}
             </tr>
           </thead>
@@ -63,7 +46,14 @@ export default function PortafolioInicial() {
             {tabla.filas.map((fila, idxFila) => (
               <tr key={idxFila}>
                 {tabla.encabezados.map((col, idxCol) => (
-                  <td key={idxCol} style={{ border: "1px solid #ccc", padding: "0.5em" }}>
+                  <td
+                    key={idxCol}
+                    style={{
+                      border: "1px solid #e0e0e0",
+                      padding: "0.7em",
+                      textAlign: "center"
+                    }}
+                  >
                     {fila[col] !== null && fila[col] !== undefined ? fila[col] : ""}
                   </td>
                 ))}
