@@ -7,7 +7,8 @@ export default function Informacion() {
   useEffect(() => {
     const fetchAcciones = async () => {
       try {
-        const res = await axios.get(`${process.env.REACT_APP_BACKEND_URL}/api/accionesParaDesplegable`);
+        // CORREGIDO: Usa el endpoint con guion medio
+        const res = await axios.get(`${process.env.REACT_APP_BACKEND_URL}/api/acciones-para-desplegable`);
         setAcciones(res.data.datos || []);
       } catch (err) {
         setAcciones([]);
