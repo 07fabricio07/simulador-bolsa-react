@@ -7,7 +7,8 @@ import BaseDeDatos from "./BaseDeDatos";
 import Informacion from "./Informacion";
 import Login from "./components/Login";
 import PortafolioInicial from "./PortafolioInicial";
-import PortafolioJugadores from "./PortafolioJugadores"; // <-- Agregado
+import PortafolioJugadores from "./PortafolioJugadores";
+import Graficos from "./Graficos"; // <-- Nuevo import
 
 function Tab({ label, active, onClick }) {
   return (
@@ -101,7 +102,7 @@ function App() {
     setComprasEnProceso(prev => [...prev, data]);
   };
 
-  // Tabs para jugador
+  // Tabs para jugador (agregada la pestaña "Gráficos")
   const jugadorTabs = [
     {
       label: "Compra y venta de acciones",
@@ -116,15 +117,16 @@ function App() {
     },
     { label: "Préstamos", content: <Prestamos /> },
     { label: "Mi portafolio", content: <MiPortafolio /> },
+    { label: "Gráficos", content: <Graficos /> }, // <-- NUEVA PESTAÑA
   ];
 
-  // Tabs para admin (mejorado)
+  // Tabs para admin
   const adminTabs = [
     { label: "Parámetros", content: <Parametros {...parametrosProps} /> },
     { label: "Base de datos", content: <BaseDeDatos intencionesVenta={intencionesVenta} comprasEnProceso={comprasEnProceso}/> },
     { label: "Información", content: <Informacion {...informacionProps} /> },
     { label: "Portafolio inicial", content: <PortafolioInicial /> },
-    { label: "Portafolio de Jugadores", content: <PortafolioJugadores /> }, // <--- NUEVO!
+    { label: "Portafolio de Jugadores", content: <PortafolioJugadores /> },
   ];
 
   // LOGOUT FUNCTION
