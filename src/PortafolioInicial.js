@@ -31,7 +31,7 @@ export default function PortafolioInicial() {
 
     try {
       await axios.post(
-        `${process.env.REACT_APP_BACKEND_URL}/api/subir-excel-portafolio`,
+        `${process.env.REACT_APP_BACKEND_URL}/api/subir-excel-portafolio-inicial`, // <---- CAMBIAR ESTA LINEA
         formData,
         { headers: { 'Content-Type': 'multipart/form-data' } }
       );
