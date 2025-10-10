@@ -27,7 +27,7 @@ export default function Parametros() {
     }
   };
 
-  // Obtenemos las columnas desde la primera fila
+  // Columnas: obtenidas de la primera fila (encabezado)
   const columnas = tablaMomentos.length > 0
     ? Object.keys(tablaMomentos[0]).filter((col) => col !== "_id")
     : [];
@@ -89,7 +89,7 @@ export default function Parametros() {
           </tr>
         </thead>
         <tbody>
-          {/* Solo mostramos las filas desde la segunda en adelante */}
+          {/* Solo mostramos las filas desde la segunda en adelante (los datos reales) */}
           {tablaMomentos.slice(1).map((fila, idxFila) => (
             <tr key={idxFila}>
               {columnas.map((col, idxCol) => (
