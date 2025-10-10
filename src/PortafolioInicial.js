@@ -5,7 +5,7 @@ export default function PortafolioInicial() {
   const [archivoCargando, setArchivoCargando] = useState(false);
   const [tabla, setTabla] = useState({ encabezados: [], filas: [] });
 
-  // Cargar la tabla del backend al montar el componente
+  // Cargar la tabla de PortafolioInicial al montar el componente
   useEffect(() => {
     cargarTabla();
   }, []);
@@ -13,7 +13,7 @@ export default function PortafolioInicial() {
   const cargarTabla = async () => {
     try {
       const res = await axios.get(
-        `${process.env.REACT_APP_BACKEND_URL}/api/portafolio-jugadores`
+        `${process.env.REACT_APP_BACKEND_URL}/api/portafolio-inicial`
       );
       setTabla(res.data);
     } catch (err) {
@@ -31,7 +31,7 @@ export default function PortafolioInicial() {
 
     try {
       await axios.post(
-        `${process.env.REACT_APP_BACKEND_URL}/api/subir-excel-portafolio-inicial`, // <---- CAMBIAR ESTA LINEA
+        `${process.env.REACT_APP_BACKEND_URL}/api/subir-excel-portafolio-inicial`,
         formData,
         { headers: { 'Content-Type': 'multipart/form-data' } }
       );
@@ -50,7 +50,6 @@ export default function PortafolioInicial() {
       <p>Sube el archivo Excel con el portafolio inicial de los jugadores:</p>
       <input type="file" accept=".xlsx,.xls" onChange={handleFileChange} disabled={archivoCargando} />
       <hr />
-      <h3>Contenido actual de la colección PortafolioJugadores:</h3>
       <div style={{ overflowX: "auto" }}>
         <table style={{ borderCollapse: "collapse", marginTop: "1em" }}>
           <thead>
