@@ -6,6 +6,7 @@ import Parametros from "./Parametros";
 import BaseDeDatos from "./BaseDeDatos";
 import Informacion from "./Informacion";
 import Login from "./components/Login";
+import PortafolioInicial from "./PortafolioInicial"; // <-- Importa la nueva pestaña
 
 function Tab({ label, active, onClick }) {
   return (
@@ -120,7 +121,8 @@ function App() {
   const adminTabs = [
     { label: "Parámetros", content: <Parametros {...parametrosProps} /> },
     { label: "Base de datos", content: <BaseDeDatos intencionesVenta={intencionesVenta} comprasEnProceso={comprasEnProceso}/> },
-    { label: "Información", content: <Informacion {...informacionProps} /> }
+    { label: "Información", content: <Informacion {...informacionProps} /> },
+    { label: "Portafolio inicial", content: <PortafolioInicial /> } // <-- Nueva pestaña
   ];
 
   // LOGOUT FUNCTION
