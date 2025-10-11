@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from "react";
-import socket from "./socket";
 
 const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
-
 const ACCIONES = ["INTC", "MSFT", "AAPL", "IPET", "IBM"];
 
 export default function CompraVentaAcciones({ usuario, nombre }) {
@@ -13,13 +11,22 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
   const [intenciones, setIntenciones] = useState([]);
   const [error, setError] = useState("");
 
-  // Escucha las intenciones de venta en tiempo real
-  useEffect(() => {
-    function handleIntenciones(data) {
+  // Consulta las intenciones de venta cada vez que se monta el componente o se envía una nueva
+  const fetchIntenciones = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
+      const data = await res.json();
       setIntenciones(data.filas || []);
+    } catch (err) {
+      setError("No se pudo consultar intenciones de venta.");
     }
-    socket.on("intenciones_de_venta", handleIntenciones);
-    return () => socket.off("intenciones_de_venta", handleIntenciones);
+  };
+
+  useEffect(() => {
+    fetchIntenciones();
+    // Opcional: puedes agregar un intervalo para refresco automático
+    // const interval = setInterval(fetchIntenciones, 5000);
+    // return () => clearInterval(interval);
   }, []);
 
   // Validación de inputs
@@ -55,6 +62,8 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
       setCantidad("");
       setPrecio("");
       setAccion("");
+      // Vuelve a consultar intenciones de venta para actualizar la tabla
+      fetchIntenciones();
     } catch (err) {
       setError("No se pudo conectar con el servidor.");
     }
