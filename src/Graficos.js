@@ -1,69 +1,39 @@
 import React, { useEffect, useState } from "react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from "recharts";
 import socket from "./socket";
-
-const API_PRECIOS = "https://simulador-bolsa-backend.onrender.com/api/precios-historicos";
+import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from "recharts";
 
 export default function Graficos() {
-  const [acciones, setAcciones] = useState([
-    "INTC", "MSFT", "AAPL", "IPET", "IBM", "WMT", "MRK", "KO"
-  ]);
-  const [accionSeleccionada, setAccionSeleccionada] = useState("INTC");
+  const [acciones, setAcciones] = useState([]);
+  const [accionSeleccionada, setAccionSeleccionada] = useState("");
   const [datos, setDatos] = useState([]);
-  const [momentoActual, setMomentoActual] = useState(null);
-  const [preciosHistoricos, setPreciosHistoricos] = useState({
-    encabezados: [],
-    filas: []
-  });
+  const [filas, setFilas] = useState([]);
+  const [encabezados, setEncabezados] = useState([]);
 
-  // 1. Carga datos históricos UNA SOLA VEZ
   useEffect(() => {
-    fetch(API_PRECIOS)
-      .then(res => res.json())
-      .then(data => {
-        setPreciosHistoricos(data);
-        if (data.encabezados && data.encabezados.length > 1) {
-          setAcciones(data.encabezados.slice(1));
-          setAccionSeleccionada(data.encabezados[1]); // Default a la segunda columna
-        }
-      })
-      .catch(err => {
-        console.error("Error cargando precios históricos:", err);
-        setPreciosHistoricos({ encabezados: [], filas: [] });
-      });
-  }, []);
-
-  // 2. Escucha cambios de momentoActual por WebSocket
-  useEffect(() => {
-    function handleTablaMomentos(tabla) {
-      if (tabla && tabla.filas && tabla.filas.length > 1) {
-        setMomentoActual(tabla.filas[1].Momento);
-      }
+    function handlePreciosFiltrados(data) {
+      if (!data || !data.encabezados || !data.filas) return;
+      setEncabezados(data.encabezados);
+      setFilas(data.filas);
+      setAcciones(data.encabezados.slice(1));
+      setAccionSeleccionada(data.encabezados[1]);
     }
-    socket.on("tabla_momentos", handleTablaMomentos);
-    return () => {
-      socket.off("tabla_momentos", handleTablaMomentos);
-    };
+    socket.on("precios_filtrados", handlePreciosFiltrados);
+    return () => socket.off("precios_filtrados", handlePreciosFiltrados);
   }, []);
 
-  // 3. Actualiza datos del gráfico cada vez que cambian acción, momento o precios
   useEffect(() => {
-    const { encabezados, filas } = preciosHistoricos;
-    if (!encabezados || !filas || !accionSeleccionada || momentoActual === null) {
+    if (!accionSeleccionada || !filas.length || !encabezados.length) {
       setDatos([]);
       return;
     }
     const nombreMomento = encabezados[0];
-    const nombreAccion = accionSeleccionada;
-    // Asegura que la comparación sea entre números
-    const datosFiltrados = filas
-      .filter(fila => Number(fila[nombreMomento]) <= Number(momentoActual))
-      .map(fila => ({
-        momento: Number(fila[nombreMomento]),
-        precio: Number(fila[nombreAccion])
-      }));
-    setDatos(datosFiltrados);
-  }, [accionSeleccionada, momentoActual, preciosHistoricos]);
+    // Construye los datos solo para la acción seleccionada
+    const datosAccion = filas.map(fila => ({
+      momento: Number(fila[nombreMomento]),
+      precio: Number(fila[accionSeleccionada])
+    }));
+    setDatos(datosAccion);
+  }, [accionSeleccionada, filas, encabezados]);
 
   return (
     <div>
