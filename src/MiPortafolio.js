@@ -24,20 +24,8 @@ export default function MiPortafolio({ nombreJugador }) {
     fetchPortafolio();
   }, []);
 
-  // Filtrar solo la fila del jugador actual (nombreJugador)
-  let filaJugador = null;
-  if (filas.length > 0 && nombreJugador) {
-    filaJugador = filas.find(fila => fila.jugador === nombreJugador);
-  }
-
-  // Transponer: filas a columnas
-  let datosTranspuestos = [];
-  if (filaJugador && encabezados.length > 0) {
-    datosTranspuestos = encabezados.map(col => ({
-      nombre: col,
-      valor: filaJugador[col]
-    }));
-  }
+  // Filtra la fila que corresponde al jugador actual
+  const filaJugador = filas.find(fila => fila.jugador === nombreJugador);
 
   const tableStyle = {
     width: "100%",
@@ -62,7 +50,7 @@ export default function MiPortafolio({ nombreJugador }) {
       <h2>Mi Portafolio</h2>
       {loading ? (
         <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>Cargando portafolio...</div>
-      ) : datosTranspuestos.length === 0 ? (
+      ) : !filaJugador ? (
         <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
           No se encontró información para tu usuario.
         </div>
@@ -70,17 +58,17 @@ export default function MiPortafolio({ nombreJugador }) {
         <table style={tableStyle}>
           <thead>
             <tr>
-              <th style={thStyle}>Concepto</th>
-              <th style={thStyle}>Valor</th>
+              {encabezados.map((col, idx) => (
+                <th key={idx} style={thStyle}>{col}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {datosTranspuestos.map((fila, idx) => (
-              <tr key={idx}>
-                <td style={thTdStyle}>{fila.nombre}</td>
-                <td style={thTdStyle}>{fila.valor}</td>
-              </tr>
-            ))}
+            <tr>
+              {encabezados.map((col, idx) => (
+                <td key={idx} style={thTdStyle}>{filaJugador[col]}</td>
+              ))}
+            </tr>
           </tbody>
         </table>
       )}
