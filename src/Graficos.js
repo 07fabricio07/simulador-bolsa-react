@@ -55,10 +55,11 @@ export default function Graficos() {
     }
     const nombreMomento = encabezados[0];
     const nombreAccion = accionSeleccionada;
+    // Asegura que la comparación sea entre números
     const datosFiltrados = filas
-      .filter(fila => fila[nombreMomento] <= momentoActual)
+      .filter(fila => Number(fila[nombreMomento]) <= Number(momentoActual))
       .map(fila => ({
-        momento: fila[nombreMomento],
+        momento: Number(fila[nombreMomento]),
         precio: Number(fila[nombreAccion])
       }));
     setDatos(datosFiltrados);
