@@ -2,14 +2,10 @@ import React, { useEffect, useState } from "react";
 
 const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
 
-export default function MiPortafolio({ usuario }) {
+export default function MiPortafolio({ nombreJugador }) {
   const [encabezados, setEncabezados] = useState([]);
   const [filas, setFilas] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Corrige el error: si usuario es undefined, no intentes usar match
-  const jugadorNumero = usuario ? usuario.match(/\d+/)?.[0] : null;
-  const jugadorActual = jugadorNumero ? `Jugador ${jugadorNumero}` : "Jugador";
 
   useEffect(() => {
     const fetchPortafolio = async () => {
@@ -28,10 +24,10 @@ export default function MiPortafolio({ usuario }) {
     fetchPortafolio();
   }, []);
 
-  // Filtrar solo la fila del jugador actual
+  // Filtrar solo la fila del jugador actual (nombreJugador)
   let filaJugador = null;
-  if (filas.length > 0 && jugadorActual) {
-    filaJugador = filas.find(fila => fila.jugador === jugadorActual);
+  if (filas.length > 0 && nombreJugador) {
+    filaJugador = filas.find(fila => fila.jugador === nombreJugador);
   }
 
   // Transponer: filas a columnas
