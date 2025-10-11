@@ -66,8 +66,10 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     }
   };
 
-  // FILTRO: solo muestra las intenciones del jugador actual
-  const misIntenciones = intenciones.filter(fila => fila.jugador === jugador);
+  // FILTRO: solo muestra las intenciones del jugador actual Y cantidad > 0
+  const misIntenciones = intenciones.filter(
+    fila => fila.jugador === jugador && fila.cantidad > 0
+  );
 
   // Anular intención de venta (poner cantidad en 0)
   const handleAnular = async (id) => {
@@ -161,42 +163,46 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
         </div>
       )}
       <h3>Mis intenciones de venta registradas:</h3>
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={thStyle}>Acción</th>
-            <th style={thStyle}>Cantidad</th>
-            <th style={thStyle}>Precio</th>
-            <th style={thStyle}>Ejecución</th>
-          </tr>
-        </thead>
-        <tbody>
-          {misIntenciones.map(fila => (
-            <tr key={fila.id}>
-              <td style={thTdStyle}>{fila.accion}</td>
-              <td style={thTdStyle}>{fila.cantidad}</td>
-              <td style={thTdStyle}>{fila.precio}</td>
-              <td style={thTdStyle}>
-                <button
-                  onClick={() => handleAnular(fila.id)}
-                  disabled={anulandoId === fila.id}
-                  style={{
-                    fontSize: 16,
-                    padding: "2px 12px",
-                    background: "#d32f2f",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 4,
-                    cursor: "pointer"
-                  }}
-                >
-                  {anulandoId === fila.id ? "..." : "Anular"}
-                </button>
-              </td>
+      {misIntenciones.length === 0 ? (
+        <div style={{color: "#888", fontSize: "18px", margin: "16px 0"}}>No tienes intenciones de venta activas</div>
+      ) : (
+        <table style={tableStyle}>
+          <thead>
+            <tr>
+              <th style={thStyle}>Acción</th>
+              <th style={thStyle}>Cantidad</th>
+              <th style={thStyle}>Precio</th>
+              <th style={thStyle}>Ejecución</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {misIntenciones.map(fila => (
+              <tr key={fila.id}>
+                <td style={thTdStyle}>{fila.accion}</td>
+                <td style={thTdStyle}>{fila.cantidad}</td>
+                <td style={thTdStyle}>{fila.precio}</td>
+                <td style={thTdStyle}>
+                  <button
+                    onClick={() => handleAnular(fila.id)}
+                    disabled={anulandoId === fila.id}
+                    style={{
+                      fontSize: 16,
+                      padding: "2px 12px",
+                      background: "#d32f2f",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 4,
+                      cursor: "pointer"
+                    }}
+                  >
+                    {anulandoId === fila.id ? "..." : "Anular"}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
