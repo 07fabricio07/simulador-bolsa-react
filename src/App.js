@@ -9,8 +9,12 @@ import Login from "./components/Login";
 import PortafolioInicial from "./PortafolioInicial";
 import PortafolioJugadores from "./PortafolioJugadores";
 import Graficos from "./Graficos";
-// Agrega el nuevo componente para la pestaña "Comprar acciones"
 import ComprarAcciones from "./ComprarAcciones";
+
+// NUEVOS COMPONENTES PARA REGISTRADOR
+import RevisarPortafolioJugadores from "./RevisarPortafolioJugadores";
+import RegistrarTransacciones from "./RegistrarTransacciones";
+import TransaccionesRegistradas from "./TransaccionesRegistradas";
 
 function Tab({ label, active, onClick }) {
   return (
@@ -115,15 +119,15 @@ function App() {
   // Cambia el nombre de la pestaña y agrega la nueva pestaña "Comprar acciones" antes de "Préstamos"
   const jugadorTabs = [
     {
-      label: "Vender mis acciones", // Renombrado
+      label: "Vender mis acciones",
       content: <CompraVentaAcciones usuario={usuarioActual.usuario} nombre={usuarioActual.nombre} />
     },
     {
-      label: "Comprar acciones", // Nueva pestaña
+      label: "Comprar acciones",
       content: <ComprarAcciones usuario={usuarioActual.usuario} nombre={usuarioActual.nombre} />
     },
     { label: "Préstamos", content: <Prestamos /> },
-    { label: "Mi portafolio", content: <MiPortafolio /> },
+    { label: "Mi portafolio", content: <MiPortafolio nombreJugador={usuarioActual.nombre} /> },
     { label: "Gráficos", content: <Graficos /> },
   ];
 
@@ -135,6 +139,13 @@ function App() {
     { label: "Portafolio de Jugadores", content: <PortafolioJugadores /> },
   ];
 
+  // NUEVAS PESTAÑAS PARA REGISTRADOR
+  const registradorTabs = [
+    { label: "Revisar portafolio de jugadores", content: <RevisarPortafolioJugadores /> },
+    { label: "Registrar transacciones", content: <RegistrarTransacciones /> },
+    { label: "Transacciones registradas", content: <TransaccionesRegistradas /> },
+  ];
+
   // LOGOUT FUNCTION
   function handleLogout() {
     localStorage.removeItem("token");
@@ -143,7 +154,13 @@ function App() {
   }
 
   const esJugador = usuarioActual.rol === "jugador";
-  const tabs = esJugador ? jugadorTabs : adminTabs;
+  const esAdmin = usuarioActual.rol === "admin";
+  const esRegistrador = usuarioActual.rol === "registrador";
+
+  let tabs = [];
+  if (esJugador) tabs = jugadorTabs;
+  else if (esAdmin) tabs = adminTabs;
+  else if (esRegistrador) tabs = registradorTabs;
 
   return (
     <div style={{ maxWidth: 800, margin: "auto" }}>
