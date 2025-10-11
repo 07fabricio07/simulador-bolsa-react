@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import socket from "./socket";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
+const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
 
 const ACCIONES = ["INTC", "MSFT", "AAPL", "IPET", "IBM"];
 
@@ -16,7 +16,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
   // Escucha las intenciones de venta en tiempo real
   useEffect(() => {
     function handleIntenciones(data) {
-      setIntenciones(data);
+      setIntenciones(data.filas || []);
     }
     socket.on("intenciones_de_venta", handleIntenciones);
     return () => socket.off("intenciones_de_venta", handleIntenciones);
@@ -44,7 +44,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
           accion,
           cantidad: Number(cantidad),
           precio: Number(precio),
-          jugador // <-- ahora en formato correcto
+          jugador
         })
       });
       const data = await res.json();
