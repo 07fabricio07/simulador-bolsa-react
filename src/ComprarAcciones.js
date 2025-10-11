@@ -10,11 +10,13 @@ export default function ComprarAcciones({ usuario, nombre }) {
   const [error, setError] = useState("");
   const [filaSeleccionada, setFilaSeleccionada] = useState(null);
   const [enviando, setEnviando] = useState(false);
+  const [momentoActual, setMomentoActual] = useState(null);
 
   // Extrae el número del jugador actual para comparar
   const jugadorNumero = usuario.match(/\d+/)?.[0];
   const jugadorActual = jugadorNumero ? `Jugador ${jugadorNumero}` : "Jugador";
 
+  // Cargar intenciones de venta
   useEffect(() => {
     const fetchIntenciones = async () => {
       try {
@@ -28,6 +30,22 @@ export default function ComprarAcciones({ usuario, nombre }) {
       }
     };
     fetchIntenciones();
+  }, []);
+
+  // Cargar momento actual de la colección TablaMomentos
+  useEffect(() => {
+    const fetchMomento = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/tabla-momentos`);
+        const data = await res.json();
+        // fila 2, columna 1 (la segunda fila, primera columna)
+        // data.filas[1] y data.filas[1].Momento
+        setMomentoActual(data.filas?.[1]?.Momento ?? null);
+      } catch (err) {
+        setMomentoActual(null);
+      }
+    };
+    fetchMomento();
   }, []);
 
   // Aplica los dos filtros: 
@@ -58,6 +76,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
     setEnviando(true);
     setError("");
     try {
+      const efectivo = cantidadInt * filaSeleccionada.precio;
       const body = {
         id: filaSeleccionada.id,
         accion: filaSeleccionada.accion,
@@ -65,7 +84,9 @@ export default function ComprarAcciones({ usuario, nombre }) {
         precio: filaSeleccionada.precio,
         vendedor: filaSeleccionada.jugador,
         comprador: jugadorActual,
-        hora: new Date().toISOString()
+        hora: new Date().toISOString(),
+        momento: Number(momentoActual),
+        efectivo
       };
       // Aquí se envía la compra a la colección "Historial" por HTTP POST
       const res = await fetch(`${BACKEND_URL}/api/historial`, {
