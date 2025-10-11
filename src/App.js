@@ -106,14 +106,7 @@ function App() {
   const jugadorTabs = [
     {
       label: "Compra y venta de acciones",
-      content: <CompraVentaAcciones
-        acciones={nombresAcciones.filter(n => n)}
-        momento={momento}
-        usuarioActual={usuarioActual}
-        agregarIntencionVenta={agregarIntencionVenta}
-        intencionesVenta={intencionesVenta}
-        agregarCompraEnProceso={agregarCompraEnProceso}
-      />
+      content: <CompraVentaAcciones />
     },
     { label: "Préstamos", content: <Prestamos /> },
     { label: "Mi portafolio", content: <MiPortafolio /> },
