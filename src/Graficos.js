@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from "recharts";
-import socket from "./socket."; // <-- CORRECTO para tu estructura
+import socket from "../socket"; // <-- CORRECTO para tu estructura
 
 const accionesPorDefecto = ["INTC", "MSFT", "AAPL", "IPET", "IBM", "WMT", "MRK", "KO"];
 
