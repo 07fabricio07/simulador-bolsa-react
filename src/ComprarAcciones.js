@@ -38,8 +38,6 @@ export default function ComprarAcciones({ usuario, nombre }) {
       try {
         const res = await fetch(`${BACKEND_URL}/api/tabla-momentos`);
         const data = await res.json();
-        // fila 2, columna 1 (la segunda fila, primera columna)
-        // data.filas[1] y data.filas[1].Momento
         setMomentoActual(data.filas?.[1]?.Momento ?? null);
       } catch (err) {
         setMomentoActual(null);
@@ -48,14 +46,10 @@ export default function ComprarAcciones({ usuario, nombre }) {
     fetchMomento();
   }, []);
 
-  // Aplica los dos filtros: 
-  // 1. Solo cantidad > 0
-  // 2. Solo si el jugador NO es el jugador actual
   const intencionesFiltradas = intenciones.filter(fila =>
     fila.jugador !== jugadorActual && fila.cantidad > 0
   );
 
-  // Abrir minipestaña para comprar
   const handleComprar = (fila) => {
     setFilaSeleccionada(fila);
     setCantidadComprar("");
@@ -63,7 +57,6 @@ export default function ComprarAcciones({ usuario, nombre }) {
     setModalOpen(true);
   };
 
-  // Validación del campo cantidadComprar
   const cantidadInt = Number(cantidadComprar);
   const cantidadValida =
     /^\d+$/.test(cantidadComprar) &&
@@ -76,6 +69,19 @@ export default function ComprarAcciones({ usuario, nombre }) {
     setEnviando(true);
     setError("");
     try {
+      // Obtener la cantidad actual en IntencionesDeVenta para el ID
+      const resIntent = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
+      const dataIntent = await resIntent.json();
+      const filaIntent = (dataIntent.filas || []).find(
+        f => f.id === filaSeleccionada.id
+      );
+      const cantidadDisponible = filaIntent ? filaIntent.cantidad : 0;
+
+      let estado = "desaprobada";
+      if (cantidadDisponible >= cantidadInt) {
+        estado = "aprobada";
+      }
+
       const efectivo = cantidadInt * filaSeleccionada.precio;
       const body = {
         id: filaSeleccionada.id,
@@ -86,9 +92,10 @@ export default function ComprarAcciones({ usuario, nombre }) {
         comprador: jugadorActual,
         hora: new Date().toISOString(),
         momento: Number(momentoActual),
-        efectivo
+        efectivo,
+        estado
       };
-      // Aquí se envía la compra a la colección "Historial" por HTTP POST
+
       const res = await fetch(`${BACKEND_URL}/api/historial`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -104,6 +111,8 @@ export default function ComprarAcciones({ usuario, nombre }) {
     }
     setEnviando(false);
   };
+
+  // ... El resto igual (tabla y modal) ...
 
   // Estilos para la tabla
   const tableStyle = {
@@ -124,7 +133,6 @@ export default function ComprarAcciones({ usuario, nombre }) {
     fontWeight: "bold"
   };
 
-  // Minipestaña/modal para comprar
   const modalStyle = {
     position: "fixed",
     top: 0, left: 0,
