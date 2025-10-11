@@ -6,16 +6,17 @@ export default function Graficos() {
   const [acciones, setAcciones] = useState([]);
   const [accionSeleccionada, setAccionSeleccionada] = useState("");
   const [datos, setDatos] = useState([]);
-  const [filas, setFilas] = useState([]);
   const [encabezados, setEncabezados] = useState([]);
+  const [filas, setFilas] = useState([]);
 
   useEffect(() => {
     function handlePreciosFiltrados(data) {
       if (!data || !data.encabezados || !data.filas) return;
       setEncabezados(data.encabezados);
       setFilas(data.filas);
-      setAcciones(data.encabezados.slice(1));
-      setAccionSeleccionada(data.encabezados[1]);
+      const accionesLista = data.encabezados.slice(1); // Quita el campo de momento (field1)
+      setAcciones(accionesLista);
+      setAccionSeleccionada(accionesLista[0]);
     }
     socket.on("precios_filtrados", handlePreciosFiltrados);
     return () => socket.off("precios_filtrados", handlePreciosFiltrados);
@@ -26,12 +27,13 @@ export default function Graficos() {
       setDatos([]);
       return;
     }
-    const nombreMomento = encabezados[0];
-    // Construye los datos solo para la acción seleccionada
-    const datosAccion = filas.map(fila => ({
-      momento: Number(fila[nombreMomento]),
-      precio: Number(fila[accionSeleccionada])
-    }));
+    // El eje X es 'field1' y el eje Y la acción seleccionada
+    const datosAccion = filas
+      .filter(fila => fila[accionSeleccionada] !== "" && !isNaN(Number(fila[accionSeleccionada])))
+      .map(fila => ({
+        momento: Number(fila[encabezados[0]]), // field1
+        precio: Number(fila[accionSeleccionada])
+      }));
     setDatos(datosAccion);
   }, [accionSeleccionada, filas, encabezados]);
 
