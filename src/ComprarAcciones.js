@@ -6,6 +6,10 @@ export default function ComprarAcciones({ usuario, nombre }) {
   const [intenciones, setIntenciones] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Extrae el número del jugador actual para comparar
+  const jugadorNumero = usuario.match(/\d+/)?.[0];
+  const jugadorActual = jugadorNumero ? `Jugador ${jugadorNumero}` : "Jugador";
+
   useEffect(() => {
     const fetchIntenciones = async () => {
       try {
@@ -20,6 +24,13 @@ export default function ComprarAcciones({ usuario, nombre }) {
     };
     fetchIntenciones();
   }, []);
+
+  // Aplica los dos filtros: 
+  // 1. Solo cantidad > 0
+  // 2. Solo si el jugador NO es el jugador actual
+  const intencionesFiltradas = intenciones.filter(fila =>
+    fila.jugador !== jugadorActual && fila.cantidad > 0
+  );
 
   // Estilos para la tabla
   const tableStyle = {
@@ -47,14 +58,15 @@ export default function ComprarAcciones({ usuario, nombre }) {
         <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
           Cargando intenciones de venta...
         </div>
-      ) : intenciones.length === 0 ? (
+      ) : intencionesFiltradas.length === 0 ? (
         <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
-          No hay intenciones de venta registradas.
+          No hay intenciones de venta disponibles.
         </div>
       ) : (
         <table style={tableStyle}>
           <thead>
             <tr>
+              <th style={thStyle}>ID</th>
               <th style={thStyle}>Acción</th>
               <th style={thStyle}>Cantidad</th>
               <th style={thStyle}>Precio</th>
@@ -62,8 +74,9 @@ export default function ComprarAcciones({ usuario, nombre }) {
             </tr>
           </thead>
           <tbody>
-            {intenciones.map(fila => (
+            {intencionesFiltradas.map(fila => (
               <tr key={fila.id}>
+                <td style={thTdStyle}>{fila.id}</td>
                 <td style={thTdStyle}>{fila.accion}</td>
                 <td style={thTdStyle}>{fila.cantidad}</td>
                 <td style={thTdStyle}>{fila.precio}</td>
