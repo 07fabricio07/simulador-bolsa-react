@@ -8,7 +8,7 @@ import Informacion from "./Informacion";
 import Login from "./components/Login";
 import PortafolioInicial from "./PortafolioInicial";
 import PortafolioJugadores from "./PortafolioJugadores";
-import Graficos from "./Graficos"; // <-- Nuevo import
+import Graficos from "./Graficos";
 
 function Tab({ label, active, onClick }) {
   return (
@@ -102,15 +102,15 @@ function App() {
     setComprasEnProceso(prev => [...prev, data]);
   };
 
-  // Tabs para jugador (agregada la pestaña "Gráficos")
+  // Tabs para jugador (pasa usuario/nombre)
   const jugadorTabs = [
     {
       label: "Compra y venta de acciones",
-      content: <CompraVentaAcciones />
+      content: <CompraVentaAcciones usuario={usuarioActual.usuario} nombre={usuarioActual.nombre} />
     },
     { label: "Préstamos", content: <Prestamos /> },
     { label: "Mi portafolio", content: <MiPortafolio /> },
-    { label: "Gráficos", content: <Graficos /> }, // <-- NUEVA PESTAÑA
+    { label: "Gráficos", content: <Graficos /> },
   ];
 
   // Tabs para admin
