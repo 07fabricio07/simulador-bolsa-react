@@ -9,6 +9,8 @@ import Login from "./components/Login";
 import PortafolioInicial from "./PortafolioInicial";
 import PortafolioJugadores from "./PortafolioJugadores";
 import Graficos from "./Graficos";
+// Agrega el nuevo componente para la pestaña "Comprar acciones"
+import ComprarAcciones from "./ComprarAcciones";
 
 function Tab({ label, active, onClick }) {
   return (
@@ -110,10 +112,15 @@ function App() {
   }
 
   // Define tabs después de que usuarioActual existe
+  // Cambia el nombre de la pestaña y agrega la nueva pestaña "Comprar acciones" antes de "Préstamos"
   const jugadorTabs = [
     {
-      label: "Compra y venta de acciones",
+      label: "Vender mis acciones", // Renombrado
       content: <CompraVentaAcciones usuario={usuarioActual.usuario} nombre={usuarioActual.nombre} />
+    },
+    {
+      label: "Comprar acciones", // Nueva pestaña
+      content: <ComprarAcciones usuario={usuarioActual.usuario} nombre={usuarioActual.nombre} />
     },
     { label: "Préstamos", content: <Prestamos /> },
     { label: "Mi portafolio", content: <MiPortafolio /> },
