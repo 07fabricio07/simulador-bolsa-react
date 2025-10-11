@@ -10,12 +10,13 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
   const [precio, setPrecio] = useState("");
   const [intenciones, setIntenciones] = useState([]);
   const [error, setError] = useState("");
+  const [anulandoId, setAnulandoId] = useState(null);
 
   // Extrae el número del usuario y arma el formato "Jugador N"
   const jugadorNumero = usuario.match(/\d+/)?.[0];
   const jugador = jugadorNumero ? `Jugador ${jugadorNumero}` : "Jugador";
 
-  // Consulta las intenciones de venta al montar el componente o tras enviar
+  // Consulta las intenciones de venta al montar el componente o tras enviar/anular
   const fetchIntenciones = async () => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
@@ -67,6 +68,29 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
 
   // FILTRO: solo muestra las intenciones del jugador actual
   const misIntenciones = intenciones.filter(fila => fila.jugador === jugador);
+
+  // Anular intención de venta (poner cantidad en 0)
+  const handleAnular = async (id) => {
+    setAnulandoId(id);
+    setError("");
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/intenciones-de-venta/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cantidad: 0 })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Error al anular la intención de venta.");
+        setAnulandoId(null);
+        return;
+      }
+      fetchIntenciones();
+    } catch (err) {
+      setError("No se pudo conectar con el servidor.");
+    }
+    setAnulandoId(null);
+  };
 
   return (
     <div style={{ maxWidth: 700, margin: "auto" }}>
@@ -121,7 +145,13 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
-            <th>Acción</th><th>Cantidad</th><th>Precio</th><th>Jugador</th><th>Hora</th><th>ID</th>
+            <th>Acción</th>
+            <th>Cantidad</th>
+            <th>Precio</th>
+            <th>Jugador</th>
+            <th>Hora</th>
+            <th>ID</th>
+            <th>Ejecución</th>
           </tr>
         </thead>
         <tbody>
@@ -133,6 +163,23 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
               <td>{fila.jugador}</td>
               <td>{new Date(fila.hora).toLocaleString()}</td>
               <td>{fila.id}</td>
+              <td>
+                <button
+                  onClick={() => handleAnular(fila.id)}
+                  disabled={anulandoId === fila.id}
+                  style={{
+                    fontSize: 16,
+                    padding: "2px 12px",
+                    background: "#d32f2f",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 4,
+                    cursor: "pointer"
+                  }}
+                >
+                  {anulandoId === fila.id ? "..." : "Anular"}
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
