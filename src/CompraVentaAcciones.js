@@ -11,7 +11,11 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
   const [intenciones, setIntenciones] = useState([]);
   const [error, setError] = useState("");
 
-  // Consulta las intenciones de venta cada vez que se monta el componente o se envía una nueva
+  // Extrae el número del usuario y arma el formato "Jugador N"
+  const jugadorNumero = usuario.match(/\d+/)?.[0];
+  const jugador = jugadorNumero ? `Jugador ${jugadorNumero}` : "Jugador";
+
+  // Consulta las intenciones de venta al montar el componente o tras enviar
   const fetchIntenciones = async () => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
@@ -24,9 +28,6 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
 
   useEffect(() => {
     fetchIntenciones();
-    // Opcional: puedes agregar un intervalo para refresco automático
-    // const interval = setInterval(fetchIntenciones, 5000);
-    // return () => clearInterval(interval);
   }, []);
 
   // Validación de inputs
@@ -34,10 +35,6 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
   const precioValido = /^\d+(\.\d+)?$/.test(precio) && Number(precio) > 0;
   const accionValida = ACCIONES.includes(accion);
   const puedeEnviar = cantidadValida && precioValido && accionValida;
-
-  // Extrae el número del usuario y arma el formato "Jugador N"
-  const jugadorNumero = usuario.match(/\d+/)?.[0];
-  const jugador = jugadorNumero ? `Jugador ${jugadorNumero}` : "Jugador";
 
   // Envía al backend
   const handleEnviar = async () => {
@@ -62,12 +59,14 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
       setCantidad("");
       setPrecio("");
       setAccion("");
-      // Vuelve a consultar intenciones de venta para actualizar la tabla
       fetchIntenciones();
     } catch (err) {
       setError("No se pudo conectar con el servidor.");
     }
   };
+
+  // FILTRO: solo muestra las intenciones del jugador actual
+  const misIntenciones = intenciones.filter(fila => fila.jugador === jugador);
 
   return (
     <div style={{ maxWidth: 700, margin: "auto" }}>
@@ -118,7 +117,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
           {error}
         </div>
       )}
-      <h3>Intenciones de venta registradas:</h3>
+      <h3>Mis intenciones de venta registradas:</h3>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
@@ -126,7 +125,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
           </tr>
         </thead>
         <tbody>
-          {intenciones.map(fila => (
+          {misIntenciones.map(fila => (
             <tr key={fila.id}>
               <td>{fila.accion}</td>
               <td>{fila.cantidad}</td>
