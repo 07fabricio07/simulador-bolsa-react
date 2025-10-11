@@ -7,8 +7,8 @@ export default function MiPortafolio({ usuario }) {
   const [filas, setFilas] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Extrae el número del jugador actual (Ej: "Jugador 5")
-  const jugadorNumero = usuario.match(/\d+/)?.[0];
+  // Corrige el error: si usuario es undefined, no intentes usar match
+  const jugadorNumero = usuario ? usuario.match(/\d+/)?.[0] : null;
   const jugadorActual = jugadorNumero ? `Jugador ${jugadorNumero}` : "Jugador";
 
   useEffect(() => {
@@ -16,7 +16,6 @@ export default function MiPortafolio({ usuario }) {
       try {
         const res = await fetch(`${BACKEND_URL}/api/portafolio-jugadores`);
         const data = await res.json();
-        // Asegúrate que data.encabezados y data.filas existen
         setEncabezados(data.encabezados || []);
         setFilas(data.filas || []);
       } catch (err) {
@@ -29,21 +28,18 @@ export default function MiPortafolio({ usuario }) {
     fetchPortafolio();
   }, []);
 
-  // Filtrar solo la fila de encabezados y la fila del jugador actual
-  let filasFiltradas = [];
-  if (filas.length > 0) {
-    const filaJugador = filas.find(fila => fila.jugador === jugadorActual);
-    if (filaJugador) {
-      filasFiltradas = [filas[0], filaJugador]; // filas[0] es encabezados
-    }
+  // Filtrar solo la fila del jugador actual
+  let filaJugador = null;
+  if (filas.length > 0 && jugadorActual) {
+    filaJugador = filas.find(fila => fila.jugador === jugadorActual);
   }
 
   // Transponer: filas a columnas
   let datosTranspuestos = [];
-  if (filasFiltradas.length === 2 && encabezados.length > 0) {
+  if (filaJugador && encabezados.length > 0) {
     datosTranspuestos = encabezados.map(col => ({
       nombre: col,
-      valor: filasFiltradas[1][col]
+      valor: filaJugador[col]
     }));
   }
 
