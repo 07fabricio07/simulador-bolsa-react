@@ -1,62 +1,49 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from "recharts";
+import socket from "./socket."; // <-- CORRECTO para tu estructura
 
-const acciones = ["INTC", "MSFT", "AAPL", "IPET", "IBM", "WMT", "MRK", "KO"];
+const accionesPorDefecto = ["INTC", "MSFT", "AAPL", "IPET", "IBM", "WMT", "MRK", "KO"];
 
 export default function Graficos() {
-  const [accionSeleccionada, setAccionSeleccionada] = useState(acciones[0]);
+  const [acciones, setAcciones] = useState(accionesPorDefecto);
+  const [accionSeleccionada, setAccionSeleccionada] = useState(accionesPorDefecto[0]);
   const [datos, setDatos] = useState([]);
   const [momentoActual, setMomentoActual] = useState(null);
+  const [preciosHistoricos, setPreciosHistoricos] = useState({ encabezados: [], filas: [] });
 
-  // Cargar momento actual cada 5 segundos
   useEffect(() => {
-    const cargarMomento = async () => {
-      try {
-        const res = await axios.get(`${process.env.REACT_APP_BACKEND_URL}/api/tabla-momentos`);
-        // Asume que el valor está en la segunda fila, primera columna (según tu instrucción)
-        if (res.data.filas && res.data.filas.length > 1) {
-          setMomentoActual(res.data.filas[1][res.data.encabezados[0]]);
-        }
-      } catch (err) {
-        setMomentoActual(null);
+    socket.on("tabla_momentos", (tabla) => {
+      if (tabla && tabla.filas && tabla.filas.length > 1) {
+        setMomentoActual(tabla.filas[1].Momento);
       }
+    });
+    socket.on("precios_historicos", setPreciosHistoricos);
+    socket.on("acciones_para_desplegable", (datosAcciones) => {
+      if (datosAcciones && datosAcciones.datos) setAcciones(datosAcciones.datos);
+    });
+    return () => {
+      socket.off("tabla_momentos");
+      socket.off("precios_historicos");
+      socket.off("acciones_para_desplegable");
     };
-
-    cargarMomento();
-    const intervalo = setInterval(cargarMomento, 5000);
-    return () => clearInterval(intervalo);
   }, []);
 
-  // Cargar datos históricos cada vez que cambia la acción o el momento actual
   useEffect(() => {
-    const cargarDatos = async () => {
-      try {
-        const res = await axios.get(`${process.env.REACT_APP_BACKEND_URL}/api/precios-historicos`);
-        const { encabezados, filas } = res.data;
-        if (!encabezados || !filas || !accionSeleccionada || momentoActual === null) {
-          setDatos([]);
-          return;
-        }
-        // Filtra filas hasta el momento actual
-        const nombreMomento = encabezados[0];
-        const nombreAccion = accionSeleccionada;
-        const datosFiltrados = filas
-          .filter(fila => fila[nombreMomento] <= momentoActual)
-          .map(fila => ({
-            momento: fila[nombreMomento],
-            precio: Number(fila[nombreAccion])
-          }));
-
-        setDatos(datosFiltrados);
-      } catch (err) {
-        setDatos([]);
-      }
-    };
-    cargarDatos();
-    const intervalo = setInterval(cargarDatos, 5000);
-    return () => clearInterval(intervalo);
-  }, [accionSeleccionada, momentoActual]);
+    const { encabezados, filas } = preciosHistoricos;
+    if (!encabezados || !filas || !accionSeleccionada || momentoActual === null) {
+      setDatos([]);
+      return;
+    }
+    const nombreMomento = encabezados[0];
+    const nombreAccion = accionSeleccionada;
+    const datosFiltrados = filas
+      .filter(fila => fila[nombreMomento] <= momentoActual)
+      .map(fila => ({
+        momento: fila[nombreMomento],
+        precio: Number(fila[nombreAccion])
+      }));
+    setDatos(datosFiltrados);
+  }, [accionSeleccionada, momentoActual, preciosHistoricos]);
 
   return (
     <div>
