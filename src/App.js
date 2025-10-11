@@ -102,7 +102,14 @@ function App() {
     setComprasEnProceso(prev => [...prev, data]);
   };
 
-  // Tabs para jugador (pasa usuario/nombre)
+  // Solo muestra la app si hay usuario logueado, si no, muestra Login
+  if (!usuarioActual) {
+    return (
+      <Login onLogin={setUsuarioActual} />
+    );
+  }
+
+  // Define tabs después de que usuarioActual existe
   const jugadorTabs = [
     {
       label: "Compra y venta de acciones",
@@ -113,7 +120,6 @@ function App() {
     { label: "Gráficos", content: <Graficos /> },
   ];
 
-  // Tabs para admin
   const adminTabs = [
     { label: "Parámetros", content: <Parametros {...parametrosProps} /> },
     { label: "Base de datos", content: <BaseDeDatos intencionesVenta={intencionesVenta} comprasEnProceso={comprasEnProceso}/> },
@@ -127,13 +133,6 @@ function App() {
     localStorage.removeItem("token");
     setUsuarioActual(null);
     setActiveTab(0);
-  }
-
-  // Solo muestra la app si hay usuario logueado, si no, muestra Login
-  if (!usuarioActual) {
-    return (
-      <Login onLogin={setUsuarioActual} />
-    );
   }
 
   const esJugador = usuarioActual.rol === "jugador";
