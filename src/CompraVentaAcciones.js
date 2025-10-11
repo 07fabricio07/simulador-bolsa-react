@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import socket from "./socket";
 
-// Usa la variable de entorno para el backend
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
 
 const ACCIONES = ["INTC", "MSFT", "AAPL", "IPET", "IBM"];
@@ -29,8 +28,9 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
   const accionValida = ACCIONES.includes(accion);
   const puedeEnviar = cantidadValida && precioValido && accionValida;
 
-  // Arma el nombre del jugador automáticamente
-  const jugador = nombre; // Ej: "Jugador Tres"
+  // Extrae el número del usuario y arma el formato "Jugador N"
+  const jugadorNumero = usuario.match(/\d+/)?.[0];
+  const jugador = jugadorNumero ? `Jugador ${jugadorNumero}` : "Jugador";
 
   // Envía al backend
   const handleEnviar = async () => {
@@ -44,7 +44,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
           accion,
           cantidad: Number(cantidad),
           precio: Number(precio),
-          jugador
+          jugador // <-- ahora en formato correcto
         })
       });
       const data = await res.json();
