@@ -92,6 +92,25 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     setAnulandoId(null);
   };
 
+  // Estilos para la tabla
+  const tableStyle = {
+    width: "100%",
+    borderCollapse: "collapse",
+    marginBottom: "24px"
+  };
+
+  const thTdStyle = {
+    border: "1px solid #ddd",
+    padding: "8px",
+    textAlign: "center"
+  };
+
+  const thStyle = {
+    ...thTdStyle,
+    background: "#f4f4f4",
+    fontWeight: "bold"
+  };
+
   return (
     <div style={{ maxWidth: 700, margin: "auto" }}>
       <h2>Inserte la cantidad y precio de la acción que desea vender:</h2>
@@ -142,28 +161,22 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
         </div>
       )}
       <h3>Mis intenciones de venta registradas:</h3>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <table style={tableStyle}>
         <thead>
           <tr>
-            <th>Acción</th>
-            <th>Cantidad</th>
-            <th>Precio</th>
-            <th>Jugador</th>
-            <th>Hora</th>
-            <th>ID</th>
-            <th>Ejecución</th>
+            <th style={thStyle}>Acción</th>
+            <th style={thStyle}>Cantidad</th>
+            <th style={thStyle}>Precio</th>
+            <th style={thStyle}>Ejecución</th>
           </tr>
         </thead>
         <tbody>
           {misIntenciones.map(fila => (
             <tr key={fila.id}>
-              <td>{fila.accion}</td>
-              <td>{fila.cantidad}</td>
-              <td>{fila.precio}</td>
-              <td>{fila.jugador}</td>
-              <td>{new Date(fila.hora).toLocaleString()}</td>
-              <td>{fila.id}</td>
-              <td>
+              <td style={thTdStyle}>{fila.accion}</td>
+              <td style={thTdStyle}>{fila.cantidad}</td>
+              <td style={thTdStyle}>{fila.precio}</td>
+              <td style={thTdStyle}>
                 <button
                   onClick={() => handleAnular(fila.id)}
                   disabled={anulandoId === fila.id}
