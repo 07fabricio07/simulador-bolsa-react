@@ -12,6 +12,10 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
   const [error, setError] = useState("");
   const [anulandoId, setAnulandoId] = useState(null);
 
+  // Estados para historial limpio
+  const [historialLimpio, setHistorialLimpio] = useState([]);
+  const [loadingHistorial, setLoadingHistorial] = useState(true);
+
   // Extrae el número del usuario y arma el formato "Jugador N"
   const jugadorNumero = usuario.match(/\d+/)?.[0];
   const jugador = jugadorNumero ? `Jugador ${jugadorNumero}` : "Jugador";
@@ -29,6 +33,23 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
 
   useEffect(() => {
     fetchIntenciones();
+  }, []);
+
+  // Consulta historial limpio al montar y cada vez que cambia
+  useEffect(() => {
+    const fetchHistorialLimpio = async () => {
+      try {
+        setLoadingHistorial(true);
+        const res = await fetch(`${BACKEND_URL}/api/historial-limpio`);
+        const data = await res.json();
+        setHistorialLimpio(data.filas || []);
+      } catch (err) {
+        setHistorialLimpio([]);
+      } finally {
+        setLoadingHistorial(false);
+      }
+    };
+    fetchHistorialLimpio();
   }, []);
 
   // Validación de inputs
@@ -93,6 +114,22 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     }
     setAnulandoId(null);
   };
+
+  // FILTRO: historial limpio para mis ventas (donde ofertante = jugador actual)
+  const misVentasHistorial = historialLimpio.filter(
+    fila => fila.vendedor === jugador
+  );
+
+  // Columnas a mostrar
+  const columnasMostrar = [
+    { key: "accion", label: "Acción" },
+    { key: "cantidad", label: "Cantidad" },
+    { key: "precio", label: "Precio" },
+    { key: "comprador", label: "Comprador" },
+    { key: "hora", label: "Hora" },
+    { key: "efectivo", label: "Efectivo" }
+    // Ocultas: id, momento, estado
+  ];
 
   // Estilos para la tabla
   const tableStyle = {
@@ -198,6 +235,41 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
                     {anulandoId === fila.id ? "..." : "Anular"}
                   </button>
                 </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {/* NUEVA SECCIÓN: HISTORIAL DE VENTA DE ACCIONES */}
+      <h3 style={{ marginTop: "32px" }}>Historial de mis venta de acciones:</h3>
+      {loadingHistorial ? (
+        <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
+          Cargando historial...
+        </div>
+      ) : misVentasHistorial.length === 0 ? (
+        <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
+          No tienes ventas registradas en Historial Limpio.
+        </div>
+      ) : (
+        <table style={tableStyle}>
+          <thead>
+            <tr>
+              {columnasMostrar.map(col => (
+                <th key={col.key} style={thStyle}>{col.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {misVentasHistorial.map((fila, idx) => (
+              <tr key={idx}>
+                {columnasMostrar.map(col => (
+                  <td key={col.key} style={thTdStyle}>
+                    {col.key === "hora"
+                      ? new Date(fila.hora).toLocaleString()
+                      : fila[col.key]}
+                  </td>
+                ))}
               </tr>
             ))}
           </tbody>

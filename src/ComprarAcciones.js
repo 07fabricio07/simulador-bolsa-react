@@ -12,11 +12,13 @@ export default function ComprarAcciones({ usuario, nombre }) {
   const [enviando, setEnviando] = useState(false);
   const [momentoActual, setMomentoActual] = useState(null);
 
-  // Extrae el número del jugador actual para comparar
+  // Para historial limpio
+  const [historialLimpio, setHistorialLimpio] = useState([]);
+  const [loadingHistorial, setLoadingHistorial] = useState(true);
+
   const jugadorNumero = usuario.match(/\d+/)?.[0];
   const jugadorActual = jugadorNumero ? `Jugador ${jugadorNumero}` : "Jugador";
 
-  // Cargar intenciones de venta
   useEffect(() => {
     const fetchIntenciones = async () => {
       try {
@@ -32,7 +34,6 @@ export default function ComprarAcciones({ usuario, nombre }) {
     fetchIntenciones();
   }, []);
 
-  // Cargar momento actual de la colección TablaMomentos
   useEffect(() => {
     const fetchMomento = async () => {
       try {
@@ -44,6 +45,23 @@ export default function ComprarAcciones({ usuario, nombre }) {
       }
     };
     fetchMomento();
+  }, []);
+
+  // Fetch historial limpio
+  useEffect(() => {
+    const fetchHistorialLimpio = async () => {
+      try {
+        setLoadingHistorial(true);
+        const res = await fetch(`${BACKEND_URL}/api/historial-limpio`);
+        const data = await res.json();
+        setHistorialLimpio(data.filas || []);
+      } catch (err) {
+        setHistorialLimpio([]);
+      } finally {
+        setLoadingHistorial(false);
+      }
+    };
+    fetchHistorialLimpio();
   }, []);
 
   const intencionesFiltradas = intenciones.filter(fila =>
@@ -63,13 +81,11 @@ export default function ComprarAcciones({ usuario, nombre }) {
     cantidadInt > 0 &&
     Number.isInteger(cantidadInt);
 
-  // Enviar compra al backend (colección "Historial")
   const handleEnviarCompra = async () => {
     if (!cantidadValida || !filaSeleccionada) return;
     setEnviando(true);
     setError("");
     try {
-      // Obtener la cantidad actual en IntencionesDeVenta para el ID
       const resIntent = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
       const dataIntent = await resIntent.json();
       const filaIntent = (dataIntent.filas || []).find(
@@ -112,9 +128,21 @@ export default function ComprarAcciones({ usuario, nombre }) {
     setEnviando(false);
   };
 
-  // ... El resto igual (tabla y modal) ...
+  // Historial de compras: solo las filas donde el jugador actual es el comprador
+  const misComprasHistorial = historialLimpio.filter(
+    fila => fila.comprador === jugadorActual
+  );
 
-  // Estilos para la tabla
+  const columnasMostrar = [
+    { key: "accion", label: "Acción" },
+    { key: "cantidad", label: "Cantidad" },
+    { key: "precio", label: "Precio" },
+    { key: "vendedor", label: "Ofertante" },
+    { key: "hora", label: "Hora" },
+    { key: "efectivo", label: "Efectivo" }
+    // Ocultas: id, momento, estado
+  ];
+
   const tableStyle = {
     width: "100%",
     borderCollapse: "collapse",
@@ -206,7 +234,6 @@ export default function ComprarAcciones({ usuario, nombre }) {
         </table>
       )}
 
-      {/* Minipestaña/modal */}
       {modalOpen && (
         <div style={modalStyle}>
           <div style={cardStyle}>
@@ -266,6 +293,41 @@ export default function ComprarAcciones({ usuario, nombre }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* NUEVA SECCIÓN: HISTORIAL DE COMPRAS DE ACCIONES */}
+      <h3 style={{ marginTop: "32px" }}>Historial de mis compras de acciones:</h3>
+      {loadingHistorial ? (
+        <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
+          Cargando historial...
+        </div>
+      ) : misComprasHistorial.length === 0 ? (
+        <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
+          No tienes compras registradas en Historial Limpio.
+        </div>
+      ) : (
+        <table style={tableStyle}>
+          <thead>
+            <tr>
+              {columnasMostrar.map(col => (
+                <th key={col.key} style={thStyle}>{col.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {misComprasHistorial.map((fila, idx) => (
+              <tr key={idx}>
+                {columnasMostrar.map(col => (
+                  <td key={col.key} style={thTdStyle}>
+                    {col.key === "hora"
+                      ? new Date(fila.hora).toLocaleString()
+                      : fila[col.key]}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );
