@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from "react";
 import socket from "./socket";
 
+// Usa la variable de entorno para el backend
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
+
 const ACCIONES = ["INTC", "MSFT", "AAPL", "IPET", "IBM"];
 
 export default function CompraVentaAcciones({ usuario, nombre }) {
@@ -9,6 +12,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
   const [cantidad, setCantidad] = useState("");
   const [precio, setPrecio] = useState("");
   const [intenciones, setIntenciones] = useState([]);
+  const [error, setError] = useState("");
 
   // Escucha las intenciones de venta en tiempo real
   useEffect(() => {
@@ -30,20 +34,30 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
 
   // Envía al backend
   const handleEnviar = async () => {
+    setError("");
     if (!puedeEnviar) return;
-    await fetch("/api/intenciones-de-venta", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        accion,
-        cantidad: Number(cantidad),
-        precio: Number(precio),
-        jugador // <-- aquí va "Jugador Tres", "Jugador Ocho", etc
-      })
-    });
-    setCantidad("");
-    setPrecio("");
-    setAccion("");
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accion,
+          cantidad: Number(cantidad),
+          precio: Number(precio),
+          jugador
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Error al enviar la intención de venta.");
+        return;
+      }
+      setCantidad("");
+      setPrecio("");
+      setAccion("");
+    } catch (err) {
+      setError("No se pudo conectar con el servidor.");
+    }
   };
 
   return (
@@ -90,6 +104,11 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
           Enviar
         </button>
       </div>
+      {error && (
+        <div style={{ color: "#d32f2f", marginBottom: 16 }}>
+          {error}
+        </div>
+      )}
       <h3>Intenciones de venta registradas:</h3>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
