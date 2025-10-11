@@ -1,11 +1,32 @@
 import React, { useEffect, useState } from "react";
 import socket from "./socket";
-import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Legend } from "recharts";
+
+// Paleta de colores para las 8 acciones
+const colors = [
+  "#007bff", // Intel
+  "#d32f2f", // Microsoft
+  "#FFD600", // Apple
+  "#388E3C", // IBM
+  "#FF9800", // Walmart
+  "#0097A7", // Merck
+  "#1976D2", // Coca Cola
+  "#8e24aa"  // Acción 8 (si tienes otra, ejemplo: IPET)
+];
+
+// Puedes mapear los nombres cortos a bonitos si lo deseas
+const nombresBonitos = {
+  "INTC": "Intel",
+  "MSFT": "Microsoft",
+  "AAPL": "Apple",
+  "IBM": "IBM",
+  "WMT": "Walmart",
+  "MRK": "Merck",
+  "KO": "Coca Cola",
+  "IPET": "IPET"
+};
 
 export default function Graficos() {
-  const [acciones, setAcciones] = useState([]);
-  const [accionSeleccionada, setAccionSeleccionada] = useState("");
-  const [datos, setDatos] = useState([]);
   const [encabezados, setEncabezados] = useState([]);
   const [filas, setFilas] = useState([]);
 
@@ -14,49 +35,53 @@ export default function Graficos() {
       if (!data || !data.encabezados || !data.filas) return;
       setEncabezados(data.encabezados);
       setFilas(data.filas);
-      const accionesLista = data.encabezados.slice(1); // Quita el campo de momento (field1)
-      setAcciones(accionesLista);
-      setAccionSeleccionada(accionesLista[0]);
     }
     socket.on("precios_filtrados", handlePreciosFiltrados);
     return () => socket.off("precios_filtrados", handlePreciosFiltrados);
   }, []);
 
-  useEffect(() => {
-    if (!accionSeleccionada || !filas.length || !encabezados.length) {
-      setDatos([]);
-      return;
-    }
-    // El eje X es 'field1' y el eje Y la acción seleccionada
-    const datosAccion = filas
-      .filter(fila => fila[accionSeleccionada] !== "" && !isNaN(Number(fila[accionSeleccionada])))
-      .map(fila => ({
-        momento: Number(fila[encabezados[0]]), // field1
-        precio: Number(fila[accionSeleccionada])
-      }));
-    setDatos(datosAccion);
-  }, [accionSeleccionada, filas, encabezados]);
+  if (!encabezados.length || !filas.length) {
+    return <div>Cargando datos...</div>;
+  }
+
+  // El eje X será la primera columna
+  const columnaX = encabezados[0];
+  // El resto de columnas son las acciones a graficar
+  const acciones = encabezados.slice(1);
+
+  // Prepara los datos: convierte los valores a número si es posible, sino los omite
+  const datosGraficar = filas.map(fila => {
+    const punto = {[columnaX]: Number(fila[columnaX])};
+    acciones.forEach(acc => {
+      const val = fila[acc];
+      punto[acc] = val === "" || isNaN(Number(val)) ? null : Number(val);
+    });
+    return punto;
+  });
 
   return (
     <div>
-      <h2>Escoge la acción a graficar</h2>
-      <select
-        value={accionSeleccionada}
-        onChange={e => setAccionSeleccionada(e.target.value)}
-        style={{ fontSize: "1.2em", padding: "0.3em", marginBottom: "1em" }}
-      >
-        {acciones.map(acc => (
-          <option key={acc} value={acc}>{acc}</option>
-        ))}
-      </select>
-      <div style={{ width: "100%", height: 400 }}>
+      <h2>Gráfico de precios de todas las acciones</h2>
+      <div style={{ width: "100%", height: 500 }}>
         <ResponsiveContainer>
-          <LineChart data={datos}>
+          <LineChart data={datosGraficar}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="momento" />
+            <XAxis dataKey={columnaX} />
             <YAxis />
             <Tooltip />
-            <Line type="monotone" dataKey="precio" stroke="#007bff" dot={false} />
+            <Legend />
+            {acciones.map((accion, idx) => (
+              <Line
+                key={accion}
+                type="monotone"
+                dataKey={accion}
+                stroke={colors[idx % colors.length]}
+                dot={false}
+                name={nombresBonitos[accion] || accion}
+                isAnimationActive={false}
+                connectNulls={true}
+              />
+            ))}
           </LineChart>
         </ResponsiveContainer>
       </div>
