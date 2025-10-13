@@ -58,7 +58,11 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
 
   // Validación de inputs
   const cantidadValida = /^\d+$/.test(cantidad) && Number(cantidad) > 0;
-  const precioValido = /^\d+(\.\d+)?$/.test(precio) && Number(precio) > 0;
+  const precioValido = (() => {
+    // Debe ser positivo, número, máximo 2 decimales
+    if (!/^\d+(\.\d{1,2})?$/.test(precio)) return false;
+    return Number(precio) > 0;
+  })();
   const accionValida = ACCIONES.includes(accion);
   const puedeEnviar = cantidadValida && precioValido && accionValida;
 
@@ -201,14 +205,24 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
           placeholder="Cantidad"
           value={cantidad}
           onChange={e => setCantidad(e.target.value)}
-          style={{ width: 100, fontSize: 18, padding: 4 }}
+          style={{
+            width: 100,
+            fontSize: 18,
+            padding: 4,
+            borderColor: cantidad && !cantidadValida ? "#d32f2f" : undefined
+          }}
         />
         <input
           type="text"
           placeholder="Precio"
           value={precio}
           onChange={e => setPrecio(e.target.value)}
-          style={{ width: 100, fontSize: 18, padding: 4 }}
+          style={{
+            width: 100,
+            fontSize: 18,
+            padding: 4,
+            borderColor: precio && !precioValido ? "#d32f2f" : undefined
+          }}
         />
         <button
           onClick={handleEnviar}
@@ -225,6 +239,10 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
         >
           Enviar
         </button>
+      </div>
+      {/* Mensaje de error si precio tiene más de 2 decimales */}
+      <div style={{ color: "#d32f2f", minHeight: 20 }}>
+        {precio && !precioValido && "El precio debe ser positivo, con máximo 2 decimales."}
       </div>
       {error && (
         <div style={{ color: "#d32f2f", marginBottom: 16 }}>
