@@ -2,6 +2,30 @@ import React, { useEffect, useState } from "react";
 
 const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
 
+// Función para normalizar nombre a "Jugador N"
+function obtenerNombreJugadorNormalizado(nombreJugador) {
+  // 1. Intentar extraer el número usando regex
+  const match = nombreJugador.match(/\d+/);
+  if (match) {
+    return `Jugador ${match[0]}`;
+  }
+  // 2. Si no hay número, intentar con palabras
+  // Ejemplo: "Jugador Uno" => "Jugador 1", "Jugador Dos" => "Jugador 2", etc.
+  const nombres = [
+    "uno", "dos", "tres", "cuatro", "cinco",
+    "seis", "siete", "ocho", "nueve", "diez",
+    "once", "doce", "trece"
+  ];
+  const nombreMin = nombreJugador.toLowerCase();
+  for (let i = 0; i < nombres.length; i++) {
+    if (nombreMin.includes(nombres[i])) {
+      return `Jugador ${i + 1}`;
+    }
+  }
+  // Si no coincide, retorna el original
+  return nombreJugador;
+}
+
 export default function MiPortafolio({ nombreJugador }) {
   const [encabezados, setEncabezados] = useState([]);
   const [filas, setFilas] = useState([]);
@@ -24,8 +48,11 @@ export default function MiPortafolio({ nombreJugador }) {
     fetchPortafolio();
   }, []);
 
+  // Normaliza el nombre del jugador
+  const nombreJugadorNormalizado = obtenerNombreJugadorNormalizado(nombreJugador);
+
   // Filtra la fila que corresponde al jugador actual
-  const filaJugador = filas.find(fila => fila.jugador === nombreJugador);
+  const filaJugador = filas.find(fila => fila.jugador === nombreJugadorNormalizado);
 
   const tableStyle = {
     width: "240px",
