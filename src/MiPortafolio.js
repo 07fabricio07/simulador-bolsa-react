@@ -4,13 +4,10 @@ const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
 
 // Función para normalizar nombre a "Jugador N"
 function obtenerNombreJugadorNormalizado(nombreJugador) {
-  // 1. Intentar extraer el número usando regex
   const match = nombreJugador.match(/\d+/);
   if (match) {
     return `Jugador ${match[0]}`;
   }
-  // 2. Si no hay número, intentar con palabras
-  // Ejemplo: "Jugador Uno" => "Jugador 1", "Jugador Dos" => "Jugador 2", etc.
   const nombres = [
     "uno", "dos", "tres", "cuatro", "cinco",
     "seis", "siete", "ocho", "nueve", "diez",
@@ -22,13 +19,13 @@ function obtenerNombreJugadorNormalizado(nombreJugador) {
       return `Jugador ${i + 1}`;
     }
   }
-  // Si no coincide, retorna el original
   return nombreJugador;
 }
 
 export default function MiPortafolio({ nombreJugador }) {
   const [encabezados, setEncabezados] = useState([]);
   const [filas, setFilas] = useState([]);
+  const [regulador, setRegulador] = useState({ encabezados: [], filas: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,11 +38,20 @@ export default function MiPortafolio({ nombreJugador }) {
       } catch (err) {
         setEncabezados([]);
         setFilas([]);
-      } finally {
-        setLoading(false);
       }
     };
-    fetchPortafolio();
+    const fetchRegulador = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/regulador-acciones`);
+        const data = await res.json();
+        setRegulador(data || { encabezados: [], filas: [] });
+      } catch (err) {
+        setRegulador({ encabezados: [], filas: [] });
+      }
+    };
+    Promise.all([fetchPortafolio(), fetchRegulador()]).finally(() =>
+      setLoading(false)
+    );
   }, []);
 
   // Normaliza el nombre del jugador
@@ -53,9 +59,12 @@ export default function MiPortafolio({ nombreJugador }) {
 
   // Filtra la fila que corresponde al jugador actual
   const filaJugador = filas.find(fila => fila.jugador === nombreJugadorNormalizado);
+  const filaRegulador = (regulador.filas || []).find(
+    fila => fila.jugador === nombreJugadorNormalizado
+  );
 
   const tableStyle = {
-    width: "240px",
+    width: "350px",
     borderCollapse: "collapse",
     marginTop: "24px"
   };
@@ -76,7 +85,9 @@ export default function MiPortafolio({ nombreJugador }) {
     <div>
       <h2>Mi Portafolio</h2>
       {loading ? (
-        <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>Cargando portafolio...</div>
+        <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
+          Cargando portafolio...
+        </div>
       ) : !filaJugador ? (
         <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
           No se encontró información para tu usuario.
@@ -87,6 +98,7 @@ export default function MiPortafolio({ nombreJugador }) {
             <tr>
               <th style={thStyle}> </th>
               <th style={thStyle}>Cantidad</th>
+              <th style={thStyle}>Disponible para ofertar</th>
             </tr>
           </thead>
           <tbody>
@@ -94,6 +106,11 @@ export default function MiPortafolio({ nombreJugador }) {
               <tr key={idx}>
                 <td style={thTdStyle}>{col}</td>
                 <td style={thTdStyle}>{filaJugador[col]}</td>
+                <td style={thTdStyle}>
+                  {filaRegulador && filaRegulador[col] !== undefined
+                    ? filaRegulador[col]
+                    : ""}
+                </td>
               </tr>
             ))}
           </tbody>
