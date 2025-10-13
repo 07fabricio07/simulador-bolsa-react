@@ -11,10 +11,9 @@ const colors = [
   "#FF9800", // Walmart
   "#0097A7", // Merck
   "#1976D2", // Coca Cola
-  "#8e24aa"  // Acción 8 (si tienes otra, ejemplo: IPET)
+  "#8e24aa"  // IPET
 ];
 
-// Puedes mapear los nombres cortos a bonitos si lo deseas
 const nombresBonitos = {
   "INTC": "Intel",
   "MSFT": "Microsoft",
@@ -26,10 +25,30 @@ const nombresBonitos = {
   "IPET": "IPET"
 };
 
+const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
+
 export default function Graficos() {
   const [encabezados, setEncabezados] = useState([]);
   const [filas, setFilas] = useState([]);
 
+  // Carga inicial cuando se monta el componente
+  useEffect(() => {
+    async function fetchPreciosFiltrados() {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/precios-filtrados`);
+        const data = await res.json();
+        if (data && data.encabezados && data.filas) {
+          setEncabezados(data.encabezados);
+          setFilas(data.filas);
+        }
+      } catch (err) {
+        // Puedes mostrar un error si lo deseas
+      }
+    }
+    fetchPreciosFiltrados();
+  }, []);
+
+  // Mantiene la suscripción al socket para cambios en tiempo real
   useEffect(() => {
     function handlePreciosFiltrados(data) {
       if (!data || !data.encabezados || !data.filas) return;
@@ -44,14 +63,11 @@ export default function Graficos() {
     return <div>Cargando datos...</div>;
   }
 
-  // El eje X será la primera columna
   const columnaX = encabezados[0];
-  // El resto de columnas son las acciones a graficar
   const acciones = encabezados.slice(1);
 
-  // Prepara los datos: convierte los valores a número si es posible, sino los omite
   const datosGraficar = filas.map(fila => {
-    const punto = {[columnaX]: Number(fila[columnaX])};
+    const punto = { [columnaX]: Number(fila[columnaX]) };
     acciones.forEach(acc => {
       const val = fila[acc];
       punto[acc] = val === "" || isNaN(Number(val)) ? null : Number(val);
