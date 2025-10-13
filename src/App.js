@@ -168,8 +168,33 @@ function App() {
 
   return (
     <div style={{ maxWidth: 800, margin: "auto" }}>
-      <h1>Plataforma virtual</h1>
-      <p>
+      {/* Encabezado con imagen cuadrada a la derecha y texto */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: 10
+      }}>
+        <div>
+          <h1 style={{ marginBottom: 0 }}>Plataforma virtual</h1>
+          <div style={{ fontSize: "18px", marginTop: 4 }}>
+            Creado por: Fabricio Avalos
+          </div>
+        </div>
+        {/* Imagen cuadrada a la derecha */}
+        <img
+          src="/logo.png" // Cambia esta ruta por la de tu imagen
+          alt="Logo"
+          style={{
+            height: 56,
+            width: 56,
+            objectFit: "cover",
+            borderRadius: 8,
+            boxShadow: "0 2px 10px #ccc"
+          }}
+        />
+      </div>
+      <p style={{ fontSize: "18px" }}>
         Usuario activo: <b>{usuarioActual.nombre} ({usuarioActual.usuario})</b> &nbsp; | Rol: <b>{usuarioActual.rol}</b>
         &nbsp; 
         <button onClick={handleLogout} style={{ marginLeft: "1em", padding: "0.3em 0.6em", cursor: "pointer" }}>
