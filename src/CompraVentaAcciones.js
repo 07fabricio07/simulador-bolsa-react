@@ -12,6 +12,10 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
   const [error, setError] = useState("");
   const [anulandoId, setAnulandoId] = useState(null);
 
+  // Estados para el modal de "Anular todas"
+  const [modalAnularTodas, setModalAnularTodas] = useState(false);
+  const [anulandoTodas, setAnulandoTodas] = useState(false);
+
   // Estados para historial limpio
   const [historialLimpio, setHistorialLimpio] = useState([]);
   const [loadingHistorial, setLoadingHistorial] = useState(true);
@@ -115,6 +119,27 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     setAnulandoId(null);
   };
 
+  // NUEVA: Anular todas las intenciones (aplica la lógica de handleAnular a todas)
+  const handleAnularTodas = async () => {
+    setAnulandoTodas(true);
+    setError("");
+    try {
+      // Ejecuta la lógica de handleAnular en todas las filas
+      for (const fila of misIntenciones) {
+        await fetch(`${BACKEND_URL}/api/intenciones-de-venta/${fila.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cantidad: 0 })
+        });
+      }
+      await fetchIntenciones();
+    } catch (err) {
+      setError("No se pudo conectar con el servidor.");
+    }
+    setAnulandoTodas(false);
+    setModalAnularTodas(false);
+  };
+
   // FILTRO: historial limpio para mis ventas (donde ofertante = jugador actual)
   const misVentasHistorial = historialLimpio.filter(
     fila => fila.vendedor === jugador
@@ -207,6 +232,83 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
         </div>
       )}
       <h3>Mis intenciones de venta registradas:</h3>
+      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        {misIntenciones.length !== 0 && (
+          <button
+            onClick={() => setModalAnularTodas(true)}
+            disabled={misIntenciones.length === 0}
+            style={{
+              fontSize: 16,
+              padding: "6px 24px",
+              background: misIntenciones.length === 0 ? "#ccc" : "#444",
+              color: "#fff",
+              border: "none",
+              borderRadius: 4,
+              cursor: misIntenciones.length === 0 ? "not-allowed" : "pointer"
+            }}
+          >
+            Anular todas
+          </button>
+        )}
+      </div>
+      {/* Modal de confirmación para "Anular todas" */}
+      {modalAnularTodas && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: "rgba(0,0,0,0.25)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            zIndex: 1000
+          }}
+        >
+          <div style={{
+            background: "#fff",
+            padding: "32px 24px",
+            borderRadius: 10,
+            boxShadow: "0 8px 24px #999",
+            textAlign: "center",
+            minWidth: 340
+          }}>
+            <div style={{ fontSize: 20, marginBottom: 24 }}>
+              ¿Deseas anular todas tus intenciones?
+            </div>
+            <div style={{ display: "flex", gap: 24, justifyContent: "center" }}>
+              <button
+                onClick={() => setModalAnularTodas(false)}
+                style={{
+                  fontSize: 18,
+                  padding: "8px 32px",
+                  background: "#19b837",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontWeight: "bold"
+                }}
+              >
+                No
+              </button>
+              <button
+                onClick={handleAnularTodas}
+                disabled={anulandoTodas}
+                style={{
+                  fontSize: 18,
+                  padding: "8px 32px",
+                  background: "#d32f2f",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: anulandoTodas ? "not-allowed" : "pointer",
+                  fontWeight: "bold"
+                }}
+              >
+                {anulandoTodas ? "..." : "Sí"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {misIntenciones.length === 0 ? (
         <div style={{color: "#888", fontSize: "18px", margin: "16px 0"}}>No tienes intenciones de venta activas</div>
       ) : (
