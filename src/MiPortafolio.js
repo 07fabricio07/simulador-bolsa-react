@@ -28,7 +28,7 @@ export default function MiPortafolio({ nombreJugador }) {
   const filaJugador = filas.find(fila => fila.jugador === nombreJugador);
 
   const tableStyle = {
-    width: "100%",
+    width: "240px",
     borderCollapse: "collapse",
     marginTop: "24px"
   };
@@ -58,17 +58,17 @@ export default function MiPortafolio({ nombreJugador }) {
         <table style={tableStyle}>
           <thead>
             <tr>
-              {encabezados.map((col, idx) => (
-                <th key={idx} style={thStyle}>{col}</th>
-              ))}
+              <th style={thStyle}> </th>
+              <th style={thStyle}>Cantidad</th>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              {encabezados.map((col, idx) => (
-                <td key={idx} style={thTdStyle}>{filaJugador[col]}</td>
-              ))}
-            </tr>
+            {encabezados.filter(col => col !== "jugador").map((col, idx) => (
+              <tr key={idx}>
+                <td style={thTdStyle}>{col}</td>
+                <td style={thTdStyle}>{filaJugador[col]}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}
