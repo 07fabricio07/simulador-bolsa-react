@@ -1,6 +1,5 @@
 import React, { useState, useRef } from "react";
 import CompraVentaAcciones from "./CompraVentaAcciones";
-import Prestamos from "./Prestamos";
 import MiPortafolio from "./MiPortafolio";
 import Parametros from "./Parametros";
 import BaseDeDatos from "./BaseDeDatos";
@@ -115,9 +114,13 @@ function App() {
     );
   }
 
-  // Define tabs después de que usuarioActual existe
-  // Cambia el nombre de la pestaña y agrega la nueva pestaña "Comprar acciones" antes de "Préstamos"
+  // Nuevo orden y eliminación de pestaña para jugadores:
+  // Orden: "Mi portafolio", "Vender mis acciones", "Comprar acciones", "Gráficos"
   const jugadorTabs = [
+    {
+      label: "Mi portafolio",
+      content: <MiPortafolio nombreJugador={usuarioActual.nombre} />
+    },
     {
       label: "Vender mis acciones",
       content: <CompraVentaAcciones usuario={usuarioActual.usuario} nombre={usuarioActual.nombre} />
@@ -126,9 +129,10 @@ function App() {
       label: "Comprar acciones",
       content: <ComprarAcciones usuario={usuarioActual.usuario} nombre={usuarioActual.nombre} />
     },
-    { label: "Préstamos", content: <Prestamos /> },
-    { label: "Mi portafolio", content: <MiPortafolio nombreJugador={usuarioActual.nombre} /> },
-    { label: "Gráficos", content: <Graficos /> },
+    {
+      label: "Gráficos",
+      content: <Graficos />
+    }
   ];
 
   const adminTabs = [

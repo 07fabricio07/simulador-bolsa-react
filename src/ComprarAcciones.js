@@ -181,6 +181,13 @@ export default function ComprarAcciones({ usuario, nombre }) {
     position: "relative"
   };
 
+  // MEJORA: Mostrar hasta 9 filas en historial de compras, con scroll y filas vacías si faltan
+  const NUM_FILAS_HISTORIAL = 9;
+  const filasHistorialMostrar =
+    misComprasHistorial.length < NUM_FILAS_HISTORIAL
+      ? [...misComprasHistorial, ...Array(NUM_FILAS_HISTORIAL - misComprasHistorial.length).fill({})]
+      : misComprasHistorial;
+
   return (
     <div>
       <h2>Intenciones de venta de otros jugadores</h2>
@@ -301,33 +308,40 @@ export default function ComprarAcciones({ usuario, nombre }) {
         <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
           Cargando historial...
         </div>
-      ) : misComprasHistorial.length === 0 ? (
-        <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
-          No tienes compras registradas en Historial Limpio.
-        </div>
       ) : (
-        <table style={tableStyle}>
-          <thead>
-            <tr>
-              {columnasMostrar.map(col => (
-                <th key={col.key} style={thStyle}>{col.label}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {misComprasHistorial.map((fila, idx) => (
-              <tr key={idx}>
+        <div
+          style={{
+            maxHeight: "360px", // 9 filas * 40px aprox
+            overflowY: "auto",
+            borderRadius: "8px",
+            border: "1px solid #eee"
+          }}
+        >
+          <table style={tableStyle}>
+            <thead>
+              <tr>
                 {columnasMostrar.map(col => (
-                  <td key={col.key} style={thTdStyle}>
-                    {col.key === "hora"
-                      ? new Date(fila.hora).toLocaleString()
-                      : fila[col.key]}
-                  </td>
+                  <th key={col.key} style={thStyle}>{col.label}</th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filasHistorialMostrar.map((fila, idx) => (
+                <tr key={idx}>
+                  {columnasMostrar.map(col => (
+                    <td key={col.key} style={thTdStyle}>
+                      {fila[col.key]
+                        ? col.key === "hora"
+                          ? new Date(fila.hora).toLocaleString()
+                          : fila[col.key]
+                        : ""}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
