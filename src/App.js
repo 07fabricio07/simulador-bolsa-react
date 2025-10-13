@@ -177,7 +177,7 @@ function App() {
       }}>
         <div>
           <h1 style={{ marginBottom: 0 }}>Plataforma virtual</h1>
-          <div style={{ fontSize: "18px", marginTop: 4 }}>
+          <div style={{ fontSize: "15px", marginTop: 4 }}>
             Creado por: Fabricio Avalos
           </div>
         </div>
@@ -186,8 +186,8 @@ function App() {
           src="/logo.png" // Cambia esta ruta por la de tu imagen
           alt="Logo"
           style={{
-            height: 56,
-            width: 56,
+            height: 72,
+            width: 72,
             objectFit: "cover",
             borderRadius: 8,
             boxShadow: "0 2px 10px #ccc"
