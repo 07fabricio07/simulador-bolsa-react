@@ -176,21 +176,23 @@ function App() {
         marginBottom: 10
       }}>
         <div>
-          <h1 style={{ marginBottom: 0 }}>Plataforma virtual</h1>
+          <h1 style={{ marginBottom: 0 }}>II Simulación Histórica</h1>
           <div style={{ fontSize: "15px", marginTop: 4 }}>
-            Creado por: Fabricio Avalos
+            <div>Creado por: Fabricio Avalos</div>
+            <div>Asesorado por: Beatriz Rodríguez Santizábal</div>
+            <div>Información de precios obtenida por: Rodrigo Romero</div>
           </div>
         </div>
-        {/* Imagen cuadrada a la derecha */}
+        {/* Imagen cuadrada a la derecha (dimensiones triplicadas) */}
         <img
-          src="/logo.png" // Cambia esta ruta por la de tu imagen
+          src="/logo.png" // Cambia esta ruta por la de tu imagen si hace falta
           alt="Logo"
           style={{
-            height: 72,
-            width: 72,
+            height: 216,
+            width: 216,
             objectFit: "cover",
-            borderRadius: 8,
-            boxShadow: "0 2px 10px #ccc"
+            borderRadius: 12,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.12)"
           }}
         />
       </div>
