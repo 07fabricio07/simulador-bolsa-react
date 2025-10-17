@@ -23,17 +23,11 @@ function isAllEmptyObjects(arr) {
   });
 }
 
-// Merge inteligente: si incoming >= current -> snapshot (reemplazar).
-// Si incoming es más pequeño -> actualizar solo por id (merge parcial).
 function mergeIntenciones(currentArr = [], incomingArr = []) {
   if (!Array.isArray(incomingArr) || incomingArr.length === 0) return currentArr.slice();
-
   if (!Array.isArray(currentArr) || currentArr.length === 0 || incomingArr.length >= currentArr.length) {
-    // snapshot: ordenar por id para determinismo
     return incomingArr.slice().sort((a, b) => (a.id || 0) - (b.id || 0));
   }
-
-  // parcial: actualizar solo por id
   const map = new Map();
   currentArr.forEach(item => {
     if (item && item.id != null) map.set(item.id, { ...item });
@@ -41,8 +35,7 @@ function mergeIntenciones(currentArr = [], incomingArr = []) {
   incomingArr.forEach(item => {
     if (item && item.id != null) {
       const existing = map.get(item.id);
-      if (existing) map.set(item.id, { ...existing, ...item });
-      else map.set(item.id, item);
+      map.set(item.id, existing ? { ...existing, ...item } : item);
     }
   });
   return Array.from(map.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
@@ -226,105 +219,42 @@ export default function ComprarAcciones({ usuario, nombre }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // util para detectar si una fila corresponde al jugador actual (historial)
-  const filaCorrespondeAComprador = (fila) => {
-    if (!fila || Object.keys(fila).length === 0) return false;
-    const jugadorNorm = jugadorActual.toString().toLowerCase().trim();
+  /* ---------- util: comprador match (FIXED) ---------- */
+  function normalizeNameForCompare(v) {
+    if (!v || typeof v !== "string") return null;
+    return v.toLowerCase().replace(/\s+/g, " ").trim();
+  }
+
+  function matchesJugadorExact(v) {
+    const name = normalizeNameForCompare(v);
+    if (!name) return false;
+    const jugadorNorm = jugadorActual.toLowerCase().trim();
     const jugadorNormNoSpace = jugadorNorm.replace(/\s+/g, "");
-    const num = jugadorNumero ? jugadorNumero.toString() : "";
-
-    const candidates = [];
-    if (fila.comprador) candidates.push(String(fila.comprador));
-    if (fila.Comprador) candidates.push(String(fila.Comprador));
-    if (fila.vendedor) candidates.push(String(fila.vendedor));
-    if (fila.Vendedor) candidates.push(String(fila.Vendedor));
-    try {
-      const other = Object.values(fila).filter(v => v !== null && v !== undefined).join(" ");
-      candidates.push(other);
-    } catch (_) {}
-
-    const joined = candidates.join(" ").toLowerCase();
-    if (joined.includes(jugadorNorm)) return true;
-    if (joined.includes(jugadorNormNoSpace)) return true;
-    if (num && joined.includes(num)) return true;
+    if (name === jugadorNorm) return true;
+    if (name.replace(/\s+/g, "") === jugadorNormNoSpace) return true;
+    if (jugadorNumero) {
+      if (name.includes(`jugador ${jugadorNumero}`)) return true;
+      if (name.includes(`jugador${jugadorNumero}`)) return true;
+    }
     return false;
-  };
+  }
 
-  // filtros y UI helpers
+  function filaCorrespondeAComprador(fila) {
+    if (!fila || typeof fila !== "object") return false;
+    const candidateFields = ["comprador", "Comprador", "buyer", "Buyer"];
+    for (const key of candidateFields) {
+      if (fila[key] && matchesJugadorExact(String(fila[key]))) return true;
+    }
+    // fallback: check all string fields for exact player token (avoid raw numeric matches)
+    for (const value of Object.values(fila)) {
+      if (typeof value === "string" && matchesJugadorExact(value)) return true;
+    }
+    return false;
+  }
+
   const misComprasHistorial = historialLimpio.filter(filaCorrespondeAComprador);
 
-  const intencionesFiltradas = intenciones.filter(
-    fila => fila && fila.jugador !== jugadorActual && fila.cantidad > 0
-  );
-
-  const handleComprar = (fila) => {
-    setFilaSeleccionada(fila);
-    setCantidadComprar("");
-    setError("");
-    setModalOpen(true);
-  };
-
-  const cantidadInt = Number(cantidadComprar);
-  const cantidadValida =
-    /^\d+$/.test(cantidadComprar) &&
-    cantidadInt > 0 &&
-    Number.isInteger(cantidadInt);
-
-  const handleEnviarCompra = async () => {
-    if (!cantidadValida || !filaSeleccionada) return;
-    setEnviando(true);
-    setError("");
-    try {
-      // comprobar disponibilidad actual
-      const resIntent = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
-      const dataIntent = await resIntent.json();
-      const filaIntent = (dataIntent.filas || []).find(
-        f => f.id === filaSeleccionada.id
-      );
-      const cantidadDisponible = filaIntent ? filaIntent.cantidad : 0;
-
-      let estado = "desaprobada";
-      if (cantidadDisponible >= cantidadInt) estado = "aprobada";
-
-      const efectivo = cantidadInt * filaSeleccionada.precio;
-      const body = {
-        id: filaSeleccionada.id,
-        accion: filaSeleccionada.accion,
-        cantidad: cantidadInt,
-        precio: filaSeleccionada.precio,
-        vendedor: filaSeleccionada.jugador,
-        comprador: jugadorActual,
-        hora: new Date().toISOString(),
-        momento: Number(momentoActual),
-        efectivo,
-        estado
-      };
-
-      const res = await fetch(`${BACKEND_URL}/api/historial`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        setError(errData.error || "Error al registrar la compra.");
-      } else {
-        setModalOpen(false);
-        // el servidor emite incrementales (historial:create e intencion:update). 
-        // Si por alguna razón tarda, los fetchs de fallback mantendrán sincronía.
-        fetchIntenciones();
-        fetchHistorialLimpio();
-      }
-    } catch (err) {
-      console.error("Error en handleEnviarCompra:", err);
-      setError("No se pudo conectar con el servidor.");
-    } finally {
-      setEnviando(false);
-    }
-  };
-
-  // columnas para historial mostrado en esta vista
+  /* ---------- UI helpers ---------- */
   const columnasMostrar = [
     { key: "accion", label: "Acción" },
     { key: "cantidad", label: "Cantidad" },
@@ -339,7 +269,6 @@ export default function ComprarAcciones({ usuario, nombre }) {
       ? [...misComprasHistorial, ...Array(NUM_FILAS_HISTORIAL - misComprasHistorial.length).fill({})]
       : misComprasHistorial;
 
-  // estilos básicos (mantén consistencia con tu proyecto)
   const tableStyle = { width: "100%", borderCollapse: "collapse", marginTop: "24px" };
   const thTdStyle = { border: "1px solid #ddd", padding: "8px", textAlign: "center" };
   const thStyle = { ...thTdStyle, background: "#f4f4f4", fontWeight: "bold" };
@@ -356,7 +285,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
 
       {loading ? (
         <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>Cargando intenciones de venta...</div>
-      ) : intencionesFiltradas.length === 0 ? (
+      ) : intenciones.filter(f => f && f.jugador !== jugadorActual && f.cantidad > 0).length === 0 ? (
         <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>No hay intenciones de venta disponibles.</div>
       ) : (
         <table style={tableStyle}>
@@ -369,15 +298,13 @@ export default function ComprarAcciones({ usuario, nombre }) {
             </tr>
           </thead>
           <tbody>
-            {intencionesFiltradas.map(fila => (
+            {intenciones.filter(f => f && f.jugador !== jugadorActual && f.cantidad > 0).map(fila => (
               <tr key={fila.id}>
                 <td style={thTdStyle}>{fila.accion}</td>
                 <td style={thTdStyle}>{fila.cantidad}</td>
                 <td style={thTdStyle}>{fila.precio}</td>
                 <td style={thTdStyle}>
-                  <button onClick={() => handleComprar(fila)} style={{ fontSize: 16, padding: "2px 12px", background: "#388E3C", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>
-                    Comprar
-                  </button>
+                  <button onClick={() => { setFilaSeleccionada(fila); setCantidadComprar(""); setModalOpen(true); }} style={{ fontSize: 16, padding: "2px 12px", background: "#388E3C", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>Comprar</button>
                 </td>
               </tr>
             ))}
@@ -394,7 +321,53 @@ export default function ComprarAcciones({ usuario, nombre }) {
             <input type="text" placeholder="Cantidad" value={cantidadComprar} onChange={e => setCantidadComprar(e.target.value)} style={{ width: "100%", fontSize: "18px", padding: "8px", marginBottom: "12px", border: "1px solid #bbb", borderRadius: "4px" }} />
             {error && <div style={{ color: "#d32f2f", marginBottom: "12px" }}>{error}</div>}
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button onClick={handleEnviarCompra} disabled={!cantidadValida || enviando} style={{ fontSize: 16, padding: "7px 22px", background: cantidadValida ? "#007bff" : "#bbb", color: "#fff", border: "none", borderRadius: 4, cursor: cantidadValida ? "pointer" : "not-allowed" }}>
+              <button onClick={async () => {
+                // re-use existing handler logic
+                if (!(/^\d+$/.test(cantidadComprar) && Number(cantidadComprar) > 0)) return;
+                await (async function () {
+                  setEnviando(true);
+                  try {
+                    const resIntent = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
+                    const dataIntent = await resIntent.json();
+                    const filaIntent = (dataIntent.filas || []).find(f => f.id === filaSeleccionada.id);
+                    const cantidadDisponible = filaIntent ? filaIntent.cantidad : 0;
+                    const cantidadInt = Number(cantidadComprar);
+                    let estado = "desaprobada";
+                    if (cantidadDisponible >= cantidadInt) estado = "aprobada";
+                    const efectivo = cantidadInt * filaSeleccionada.precio;
+                    const body = {
+                      id: filaSeleccionada.id,
+                      accion: filaSeleccionada.accion,
+                      cantidad: cantidadInt,
+                      precio: filaSeleccionada.precio,
+                      vendedor: filaSeleccionada.jugador,
+                      comprador: jugadorActual,
+                      hora: new Date().toISOString(),
+                      momento: Number(momentoActual),
+                      efectivo,
+                      estado
+                    };
+                    const res = await fetch(`${BACKEND_URL}/api/historial`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(body)
+                    });
+                    if (!res.ok) {
+                      const errData = await res.json().catch(() => ({}));
+                      setError(errData.error || "Error al registrar la compra.");
+                    } else {
+                      setModalOpen(false);
+                      await fetchIntenciones();
+                      await fetchHistorialLimpio();
+                    }
+                  } catch (err) {
+                    console.error("Error en compra:", err);
+                    setError("No se pudo conectar con el servidor.");
+                  } finally {
+                    setEnviando(false);
+                  }
+                })();
+              }} disabled={enviando} style={{ fontSize: 16, padding: "7px 22px", background: "#007bff", color: "#fff", border: "none", borderRadius: 4 }}>
                 {enviando ? "Enviando..." : "Enviar"}
               </button>
             </div>

@@ -14,7 +14,6 @@ function normalizePayload(datos) {
   if (datos && datos.id != null) return [datos];
   return [];
 }
-
 function isAllEmptyObjects(arr) {
   if (!Array.isArray(arr)) return false;
   if (arr.length === 0) return false;
@@ -23,16 +22,11 @@ function isAllEmptyObjects(arr) {
     return Object.keys(item).length === 0;
   });
 }
-
-// Merge inteligente: si incoming >= current -> snapshot (reemplazar).
-// Si incoming es más pequeño -> actualizar solo por id (merge parcial).
 function mergeIntenciones(currentArr = [], incomingArr = []) {
   if (!Array.isArray(incomingArr) || incomingArr.length === 0) return currentArr.slice();
-
   if (!Array.isArray(currentArr) || currentArr.length === 0 || incomingArr.length >= currentArr.length) {
     return incomingArr.slice().sort((a, b) => (a.id || 0) - (b.id || 0));
   }
-
   const map = new Map();
   currentArr.forEach(item => {
     if (item && item.id != null) map.set(item.id, { ...item });
@@ -46,7 +40,7 @@ function mergeIntenciones(currentArr = [], incomingArr = []) {
   return Array.from(map.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
 }
 
-/* ---------- Component v40 ---------- */
+/* ---------- Component v40 (repaired filtering) ---------- */
 export default function CompraVentaAcciones({ usuario, nombre }) {
   // Form states
   const [accion, setAccion] = useState("");
@@ -311,9 +305,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
       setLoadingHistorial(false);
     });
 
-    socket.on("connect_error", (err) => {
-      console.error("socket connect_error (CompraVentaAcciones):", err);
-    });
+    socket.on("connect_error", (err) => console.error("socket connect_error (CompraVentaAcciones):", err));
 
     return () => {
       try { socket.disconnect(); } catch (_) {}
@@ -322,25 +314,41 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ---------- Historial vendedor helpers ---------- */
-  const filaCorrespondeAVendedor = (fila) => {
-    if (!fila || Object.keys(fila).length === 0) return false;
-    const jugadorNorm = jugador.toString().toLowerCase().trim();
-    const jugadorNormNoSpace = jugadorNorm.replace(/\s+/g, "");
-    const num = jugadorNumero ? jugadorNumero.toString() : "";
-    const candidates = [];
-    if (fila.vendedor) candidates.push(String(fila.vendedor));
-    if (fila.Vendedor) candidates.push(String(fila.Vendedor));
-    try {
-      const other = Object.values(fila).filter(v => v !== null && v !== undefined).join(" ");
-      candidates.push(other);
-    } catch (_) {}
-    const joined = candidates.join(" ").toLowerCase();
-    if (joined.includes(jugadorNorm)) return true;
-    if (joined.includes(jugadorNormNoSpace)) return true;
-    if (num && joined.includes(num)) return true;
+  /* ---------- Historial vendedor helpers (FIXED) ---------- */
+  // Normaliza un valor de nombre y comprueba igualdad con el jugador actual
+  function normalizeNameForCompare(v) {
+    if (!v || typeof v !== "string") return null;
+    return v.toLowerCase().replace(/\s+/g, " ").trim();
+  }
+
+  function matchesJugadorExact(v) {
+    const name = normalizeNameForCompare(v);
+    if (!name) return false;
+    const jugadorNorm = jugador.toLowerCase().trim(); // "jugador 2"
+    const jugadorNormNoSpace = jugadorNorm.replace(/\s+/g, ""); // "jugador2"
+    if (name === jugadorNorm) return true;
+    if (name.replace(/\s+/g, "") === jugadorNormNoSpace) return true;
+    // Accept if contains exact token "jugador N" or "jugadorN"
+    if (jugadorNumero) {
+      if (name.includes(`jugador ${jugadorNumero}`)) return true;
+      if (name.includes(`jugador${jugadorNumero}`)) return true;
+    }
     return false;
-  };
+  }
+
+  // Comprueba campos específicos (vendedor/Vendedor/etc.) sin falsos positivos por números sueltos.
+  function filaCorrespondeAVendedor(fila) {
+    if (!fila || typeof fila !== "object") return false;
+    const candidateFields = ["vendedor", "Vendedor", "seller", "Seller", "ofertante", "Ofertante"];
+    for (const key of candidateFields) {
+      if (fila[key] && matchesJugadorExact(String(fila[key]))) return true;
+    }
+    // fallback: check any string field for the exact player token (but not raw numbers)
+    for (const value of Object.values(fila)) {
+      if (typeof value === "string" && matchesJugadorExact(value)) return true;
+    }
+    return false;
+  }
 
   const misVentasHistorial = historialLimpio.filter(filaCorrespondeAVendedor);
 
