@@ -133,14 +133,14 @@ export default function ComprarAcciones({ usuario, nombre }) {
     fila => fila.comprador === jugadorActual
   );
 
+  // Columnas a mostrar en historial: quitada la columna "Ofertante" (vendedor)
   const columnasMostrar = [
     { key: "accion", label: "Acción" },
     { key: "cantidad", label: "Cantidad" },
     { key: "precio", label: "Precio" },
-    { key: "vendedor", label: "Ofertante" },
     { key: "hora", label: "Hora" },
     { key: "efectivo", label: "Efectivo" }
-    // Ocultas: id, momento, estado
+    // Ocultas: id, momento, estado, vendedor (Ofertante)
   ];
 
   const tableStyle = {
@@ -203,22 +203,18 @@ export default function ComprarAcciones({ usuario, nombre }) {
         <table style={tableStyle}>
           <thead>
             <tr>
-              <th style={thStyle}>ID</th>
               <th style={thStyle}>Acción</th>
               <th style={thStyle}>Cantidad</th>
               <th style={thStyle}>Precio</th>
-              <th style={thStyle}>Jugador</th>
               <th style={thStyle}>Ejecución</th>
             </tr>
           </thead>
           <tbody>
             {intencionesFiltradas.map(fila => (
               <tr key={fila.id}>
-                <td style={thTdStyle}>{fila.id}</td>
                 <td style={thTdStyle}>{fila.accion}</td>
                 <td style={thTdStyle}>{fila.cantidad}</td>
                 <td style={thTdStyle}>{fila.precio}</td>
-                <td style={thTdStyle}>{fila.jugador}</td>
                 <td style={thTdStyle}>
                   <button
                     onClick={() => handleComprar(fila)}

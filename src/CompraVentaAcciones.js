@@ -149,15 +149,14 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     fila => fila.vendedor === jugador
   );
 
-  // Columnas a mostrar
+  // Columnas a mostrar (se quitó "comprador")
   const columnasMostrar = [
     { key: "accion", label: "Acción" },
     { key: "cantidad", label: "Cantidad" },
     { key: "precio", label: "Precio" },
-    { key: "comprador", label: "Comprador" },
     { key: "hora", label: "Hora" },
     { key: "efectivo", label: "Efectivo" }
-    // Ocultas: id, momento, estado
+    // Ocultas: id, momento, estado, comprador
   ];
 
   // Estilos para la tabla
