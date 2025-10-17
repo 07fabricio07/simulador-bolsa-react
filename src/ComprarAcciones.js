@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 
 const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
 
@@ -16,24 +16,45 @@ export default function ComprarAcciones({ usuario, nombre }) {
   const [historialLimpio, setHistorialLimpio] = useState([]);
   const [loadingHistorial, setLoadingHistorial] = useState(true);
 
+  const [isWsConnected, setIsWsConnected] = useState(false);
+
+  // refs para controlar ws/polling entre renders
+  const wsRef = useRef(null);
+  const reconnectAttemptsRef = useRef(0);
+  const pollIntervalRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
+
   const jugadorNumero = usuario.match(/\d+/)?.[0];
   const jugadorActual = jugadorNumero ? `Jugador ${jugadorNumero}` : "Jugador";
 
-  useEffect(() => {
-    const fetchIntenciones = async () => {
-      try {
-        const res = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
-        const data = await res.json();
-        setIntenciones(data.filas || []);
-      } catch (err) {
-        setIntenciones([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchIntenciones();
+  // fetchIntenciones y fetchHistorialLimpio son usados en varios sitios: los definimos con useCallback
+  const fetchIntenciones = useCallback(async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
+      const data = await res.json();
+      setIntenciones(data.filas || []);
+    } catch (err) {
+      console.error("Error fetch intenciones:", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  const fetchHistorialLimpio = useCallback(async () => {
+    try {
+      setLoadingHistorial(true);
+      const res = await fetch(`${BACKEND_URL}/api/historial-limpio`);
+      const data = await res.json();
+      setHistorialLimpio(data.filas || []);
+    } catch (err) {
+      console.error("Error fetch historial limpio:", err);
+      setHistorialLimpio([]);
+    } finally {
+      setLoadingHistorial(false);
+    }
+  }, []);
+
+  // obtiene el "momento" actual (si existe)
   useEffect(() => {
     const fetchMomento = async () => {
       try {
@@ -47,25 +68,118 @@ export default function ComprarAcciones({ usuario, nombre }) {
     fetchMomento();
   }, []);
 
-  // Fetch historial limpio
+  // carga inicial de datos
   useEffect(() => {
-    const fetchHistorialLimpio = async () => {
-      try {
-        setLoadingHistorial(true);
-        const res = await fetch(`${BACKEND_URL}/api/historial-limpio`);
-        const data = await res.json();
-        setHistorialLimpio(data.filas || []);
-      } catch (err) {
-        setHistorialLimpio([]);
-      } finally {
-        setLoadingHistorial(false);
+    fetchIntenciones();
+    fetchHistorialLimpio();
+  }, [fetchIntenciones, fetchHistorialLimpio]);
+
+  // Lógica WebSocket con reconexión y fallback polling
+  useEffect(() => {
+    // construye URL WS a partir de BACKEND_URL
+    let wsUrl;
+    try {
+      const urlObj = new URL(BACKEND_URL);
+      const protocol = urlObj.protocol === "https:" ? "wss" : "ws";
+      // Si tu servidor WS está en otra ruta, cámbiala (ej: `${protocol}://${urlObj.host}/ws`)
+      wsUrl = `${protocol}://${urlObj.host}/`;
+    } catch (e) {
+      console.error("BACKEND_URL inválida para WebSocket:", BACKEND_URL, e);
+      wsUrl = null;
+    }
+
+    let stopped = false;
+
+    const startPolling = () => {
+      if (pollIntervalRef.current) return;
+      // polling cada 8s cuando WS no está disponible
+      pollIntervalRef.current = setInterval(() => {
+        fetchIntenciones();
+        fetchHistorialLimpio();
+      }, 8000);
+      console.log("Polling: ON");
+    };
+
+    const stopPolling = () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+        console.log("Polling: OFF");
       }
     };
-    fetchHistorialLimpio();
-  }, []);
 
-  const intencionesFiltradas = intenciones.filter(fila =>
-    fila.jugador !== jugadorActual && fila.cantidad > 0
+    const connect = () => {
+      if (!wsUrl || stopped) {
+        setIsWsConnected(false);
+        startPolling();
+        return;
+      }
+
+      try {
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          console.log("WS conectado a", wsUrl);
+          reconnectAttemptsRef.current = 0;
+          setIsWsConnected(true);
+          stopPolling();
+        };
+
+        ws.onmessage = (ev) => {
+          // cualquier mensaje provoca refresco. Si quieres parsear tipos, adapta aquí.
+          try {
+            const data = JSON.parse(ev.data);
+            console.log("WS mensaje recibido:", data);
+          } catch (e) {
+            console.log("WS mensaje (no JSON):", ev.data);
+          }
+          fetchIntenciones();
+          fetchHistorialLimpio();
+        };
+
+        ws.onclose = (ev) => {
+          console.warn("WS cerrado:", ev.reason || ev);
+          setIsWsConnected(false);
+          // schedule reconnect con backoff exponencial (hasta 30s)
+          reconnectAttemptsRef.current++;
+          const timeout = Math.min(30000, 1000 * 2 ** reconnectAttemptsRef.current);
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (!stopped) connect();
+          }, timeout);
+          // inicia polling como fallback mientras reconecta
+          startPolling();
+        };
+
+        ws.onerror = (err) => {
+          console.error("WS error:", err);
+        };
+      } catch (err) {
+        console.error("No se pudo crear WebSocket:", err);
+        setIsWsConnected(false);
+        startPolling();
+      }
+    };
+
+    connect();
+
+    return () => {
+      stopped = true;
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      if (wsRef.current) {
+        try { wsRef.current.close(); } catch (e) { /* ignore */ }
+        wsRef.current = null;
+      }
+      stopPolling();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchIntenciones, fetchHistorialLimpio]);
+
+  const intencionesFiltradas = intenciones.filter(
+    fila => fila.jugador !== jugadorActual && fila.cantidad > 0
   );
 
   const handleComprar = (fila) => {
@@ -121,6 +235,9 @@ export default function ComprarAcciones({ usuario, nombre }) {
         setError("Error al registrar la compra.");
       } else {
         setModalOpen(false);
+        // tras compra exitosa refrescamos manualmente (en caso de que el servidor no notifique inmediatamente)
+        fetchIntenciones();
+        fetchHistorialLimpio();
       }
     } catch (err) {
       setError("No se pudo conectar con el servidor.");
@@ -191,6 +308,12 @@ export default function ComprarAcciones({ usuario, nombre }) {
   return (
     <div>
       <h2>Intenciones de venta de otros jugadores</h2>
+
+      {/* indicador de estado WS (opcional, para debug/UX) */}
+      <div style={{ marginBottom: 8, color: isWsConnected ? "#1b5e20" : "#666", fontSize: 13 }}>
+        {isWsConnected ? "Conectado (tiempo real)" : "Desconectado (caída a polling cada 8s)"}
+      </div>
+
       {loading ? (
         <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
           Cargando intenciones de venta...
