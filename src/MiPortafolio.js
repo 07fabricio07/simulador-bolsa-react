@@ -64,7 +64,7 @@ export default function MiPortafolio({ nombreJugador }) {
   );
 
   const tableStyle = {
-    width: "350px",
+    width: "520px",
     borderCollapse: "collapse",
     marginTop: "24px"
   };
@@ -98,21 +98,38 @@ export default function MiPortafolio({ nombreJugador }) {
             <tr>
               <th style={thStyle}> </th>
               <th style={thStyle}>Cantidad</th>
-              <th style={thStyle}>Disponible para ofertar</th>
+              <th style={thStyle}>Cantidad que estás ofertando</th>
+              <th style={thStyle}>Cantidad disponible para ofertar</th>
             </tr>
           </thead>
           <tbody>
-            {encabezados.filter(col => col !== "jugador").map((col, idx) => (
-              <tr key={idx}>
-                <td style={thTdStyle}>{col}</td>
-                <td style={thTdStyle}>{filaJugador[col]}</td>
-                <td style={thTdStyle}>
-                  {filaRegulador && filaRegulador[col] !== undefined
-                    ? filaRegulador[col]
-                    : ""}
-                </td>
-              </tr>
-            ))}
+            {encabezados
+              .filter(col => col !== "jugador")
+              .map((col, idx) => {
+                const totalRaw = filaJugador[col];
+                const total = typeof totalRaw === "number" ? totalRaw : Number(totalRaw || 0);
+
+                // valor que actualmente está ofertando (proviene de regulador)
+                const ofertandoRaw = filaRegulador && filaRegulador[col] !== undefined ? filaRegulador[col] : null;
+                const ofertando = ofertandoRaw === null ? null : Number(ofertandoRaw || 0);
+
+                // Solo calcular disponible para columnas que representen cantidades (acciones)
+                // Evitamos mostrar valores para filas como "Efectivo" o "Préstamo"
+                const isAccion = typeof total === "number" && !["Efectivo", "Préstamo"].includes(col);
+
+                const disponible = isAccion && ofertando !== null
+                  ? Math.max(0, total - ofertando)
+                  : "";
+
+                return (
+                  <tr key={idx}>
+                    <td style={thTdStyle}>{col}</td>
+                    <td style={thTdStyle}>{Number.isFinite(total) ? total : ""}</td>
+                    <td style={thTdStyle}>{ofertando !== null ? ofertando : ""}</td>
+                    <td style={thTdStyle}>{disponible !== "" ? disponible : ""}</td>
+                  </tr>
+                );
+              })}
           </tbody>
         </table>
       )}
