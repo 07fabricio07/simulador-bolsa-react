@@ -350,7 +350,28 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     return false;
   }
 
-  const misVentasHistorial = historialLimpio.filter(filaCorrespondeAVendedor);
+  /**
+   * NEW RULE: The "Historial de mis venta de acciones" MUST show only rows where the
+   * column "Ofertante" (if present) equals the current player.
+   *
+   * Behavior:
+   * - If the row contains an "Ofertante" or "ofertante" field (explicit column), we require it to match the current player.
+   * - Otherwise (no explicit Ofertante column), we fall back to the older heuristic that checks common seller fields.
+   */
+  function filaEsVentaDelJugador(fila) {
+    if (!fila || typeof fila !== "object") return false;
+
+    // If explicit "Ofertante" column exists, require it to match exactly
+    if (Object.prototype.hasOwnProperty.call(fila, "Ofertante") || Object.prototype.hasOwnProperty.call(fila, "ofertante")) {
+      const ofertanteVal = (fila.Ofertante ?? fila.ofertante);
+      return ofertanteVal ? matchesJugadorExact(String(ofertanteVal)) : false;
+    }
+
+    // Fallback to legacy check (vendedor/seller/etc.)
+    return filaCorrespondeAVendedor(fila);
+  }
+
+  const misVentasHistorial = historialLimpio.filter(filaEsVentaDelJugador);
 
   /* ---------- Render ---------- */
   const columnasMostrar = [
