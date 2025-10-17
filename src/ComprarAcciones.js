@@ -3,6 +3,21 @@ import { io } from "socket.io-client";
 
 const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
 
+function normalizePayload(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (payload.filas && Array.isArray(payload.filas)) return payload.filas;
+  return [];
+}
+
+function isAllEmptyObjects(arr) {
+  if (!Array.isArray(arr)) return true;
+  return arr.every(item => {
+    if (!item || typeof item !== "object") return false;
+    return Object.keys(item).length === 0;
+  });
+}
+
 export default function ComprarAcciones({ usuario, nombre }) {
   const [intenciones, setIntenciones] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -13,14 +28,14 @@ export default function ComprarAcciones({ usuario, nombre }) {
   const [enviando, setEnviando] = useState(false);
   const [momentoActual, setMomentoActual] = useState(null);
 
-  // Para historial limpio
+  // historial limpio
   const [historialLimpio, setHistorialLimpio] = useState([]);
   const [loadingHistorial, setLoadingHistorial] = useState(true);
 
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const socketRef = useRef(null);
 
-  // refs para conservar estado actual y comparar en handlers
+  // refs para comparar/retener estado actual entre handlers
   const historialRef = useRef([]);
   const intencionesRef = useRef([]);
 
@@ -31,7 +46,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
     try {
       const res = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
       const data = await res.json();
-      const arr = data.filas || data || [];
+      const arr = normalizePayload(data);
       setIntenciones(arr);
       intencionesRef.current = arr;
     } catch (err) {
@@ -46,7 +61,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
       setLoadingHistorial(true);
       const res = await fetch(`${BACKEND_URL}/api/historial-limpio`);
       const data = await res.json();
-      const arr = data.filas || data || [];
+      const arr = normalizePayload(data);
       setHistorialLimpio(arr);
       historialRef.current = arr;
     } catch (err) {
@@ -77,11 +92,9 @@ export default function ComprarAcciones({ usuario, nombre }) {
     fetchHistorialLimpio();
   }, [fetchIntenciones, fetchHistorialLimpio]);
 
-  // socket.io: conectar y escuchar eventos (manejo tolerante de payloads)
+  // socket.io: conectar y escuchar eventos con tolerancia a payloads vacíos
   useEffect(() => {
-    const socket = io(BACKEND_URL, {
-      transports: ["websocket"]
-    });
+    const socket = io(BACKEND_URL, { transports: ["websocket"] });
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -94,13 +107,19 @@ export default function ComprarAcciones({ usuario, nombre }) {
       setIsSocketConnected(false);
     });
 
-    // Handler tolerante: acepta array directo o { filas: [...] }
+    // intenciones_de_venta handler
     socket.on("intenciones_de_venta", (payload) => {
-      const arr = Array.isArray(payload) ? payload : (payload && payload.filas) ? payload.filas : [];
-      console.log("evento intenciones_de_venta recibido", arr);
+      const arr = normalizePayload(payload);
+      console.log("evento intenciones_de_venta recibido:", arr);
 
-      // Si el servidor envía un array vacío pero ya tenemos intenciones cargadas, IGNORA para no borrar sin motivo.
-      if (Array.isArray(arr) && arr.length === 0 && intencionesRef.current && intencionesRef.current.length > 0) {
+      // si el servidor manda "relleno" (objetos vacíos), ignorar
+      if (isAllEmptyObjects(arr)) {
+        console.log("Ignorado intenciones_de_venta: payload contiene solo objetos vacíos");
+        return;
+      }
+
+      // evitar que un emit vacío borre datos existentes en el cliente
+      if (Array.isArray(arr) && arr.length === 0 && intencionesRef.current.length > 0) {
         console.log("Ignorado intenciones_de_venta vacío (cliente ya tiene datos).");
         return;
       }
@@ -110,18 +129,38 @@ export default function ComprarAcciones({ usuario, nombre }) {
       setLoading(false);
     });
 
+    // historial_limpio handler
     socket.on("historial_limpio", (payload) => {
-      const arr = Array.isArray(payload) ? payload : (payload && payload.filas) ? payload.filas : [];
-      console.log("evento historial_limpio recibido", arr);
+      const arr = normalizePayload(payload);
+      console.log("evento historial_limpio recibido:", arr);
 
-      // Si el servidor envía un array vacío pero ya tenemos historial cargado, IGNORA para no borrar sin motivo.
-      if (Array.isArray(arr) && arr.length === 0 && historialRef.current && historialRef.current.length > 0) {
+      // si payload son solo objetos vacíos, ignorar
+      if (isAllEmptyObjects(arr)) {
+        console.log("Ignorado historial_limpio: payload contiene solo objetos vacíos");
+        return;
+      }
+
+      // si server envía array vacío pero cliente ya tiene datos, IGNORA para no borrar sin motivo
+      if (Array.isArray(arr) && arr.length === 0 && historialRef.current.length > 0) {
         console.log("Ignorado historial_limpio vacío (cliente ya tiene datos).");
         return;
       }
 
-      setHistorialLimpio(arr);
-      historialRef.current = arr;
+      // Si hay datos entrantes, reemplazamos (mantén simple y coherente)
+      if (Array.isArray(arr) && arr.length > 0) {
+        // ordenar por hora descendente si existe el campo hora
+        const sorted = arr.slice().sort((a, b) => {
+          const da = a.hora ? new Date(a.hora).getTime() : 0;
+          const db = b.hora ? new Date(b.hora).getTime() : 0;
+          return db - da;
+        });
+        setHistorialLimpio(sorted);
+        historialRef.current = sorted;
+      } else {
+        // si no hay datos y el cliente está vacío, actualizar (caso real de lista vacía)
+        setHistorialLimpio(arr);
+        historialRef.current = arr;
+      }
       setLoadingHistorial(false);
     });
 
@@ -130,16 +169,16 @@ export default function ComprarAcciones({ usuario, nombre }) {
     });
 
     return () => {
-      try { socket.disconnect(); } catch (e) { /* ignore */ }
+      try { socket.disconnect(); } catch (_) {}
       socketRef.current = null;
     };
   }, [fetchIntenciones, fetchHistorialLimpio]);
 
   // función robusta para detectar si una fila corresponde al jugador actual
   const filaCorrespondeAComprador = (fila) => {
-    if (!fila || Object.keys(fila).length === 0) return false; // filler row
-    const jugadorNorm = jugadorActual.toString().toLowerCase().trim(); // "jugador 2"
-    const jugadorNormNoSpace = jugadorNorm.replace(/\s+/g, ""); // "jugador2"
+    if (!fila || Object.keys(fila).length === 0) return false;
+    const jugadorNorm = jugadorActual.toString().toLowerCase().trim();
+    const jugadorNormNoSpace = jugadorNorm.replace(/\s+/g, "");
     const num = jugadorNumero ? jugadorNumero.toString() : "";
 
     const candidates = [];
@@ -150,10 +189,9 @@ export default function ComprarAcciones({ usuario, nombre }) {
     try {
       const other = Object.values(fila).filter(v => v !== null && v !== undefined).join(" ");
       candidates.push(other);
-    } catch (_) { /* ignore */ }
+    } catch (_) {}
 
     const joined = candidates.join(" ").toLowerCase();
-
     if (joined.includes(jugadorNorm)) return true;
     if (joined.includes(jugadorNormNoSpace)) return true;
     if (num && joined.includes(num)) return true;
@@ -217,7 +255,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
         setError("Error al registrar la compra.");
       } else {
         setModalOpen(false);
-        // el socket.io server emitirá historial e intenciones; si tarda, hacemos refresh inmediato
+        // conservar fetch inmediato por si la emisión tarda
         fetchIntenciones();
         fetchHistorialLimpio();
       }
@@ -227,7 +265,6 @@ export default function ComprarAcciones({ usuario, nombre }) {
     setEnviando(false);
   };
 
-  // Columnas a mostrar en historial: quitada la columna "Ofertante" (vendedor)
   const columnasMostrar = [
     { key: "accion", label: "Acción" },
     { key: "cantidad", label: "Cantidad" },
@@ -236,43 +273,12 @@ export default function ComprarAcciones({ usuario, nombre }) {
     { key: "efectivo", label: "Efectivo" }
   ];
 
-  const tableStyle = {
-    width: "100%",
-    borderCollapse: "collapse",
-    marginTop: "24px"
-  };
+  const tableStyle = { width: "100%", borderCollapse: "collapse", marginTop: "24px" };
+  const thTdStyle = { border: "1px solid #ddd", padding: "8px", textAlign: "center" };
+  const thStyle = { ...thTdStyle, background: "#f4f4f4", fontWeight: "bold" };
 
-  const thTdStyle = {
-    border: "1px solid #ddd",
-    padding: "8px",
-    textAlign: "center"
-  };
-
-  const thStyle = {
-    ...thTdStyle,
-    background: "#f4f4f4",
-    fontWeight: "bold"
-  };
-
-  const modalStyle = {
-    position: "fixed",
-    top: 0, left: 0,
-    width: "100vw", height: "100vh",
-    background: "rgba(0,0,0,0.22)",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 999
-  };
-
-  const cardStyle = {
-    background: "#fff",
-    padding: "2em",
-    borderRadius: "10px",
-    minWidth: "320px",
-    boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
-    position: "relative"
-  };
+  const modalStyle = { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "rgba(0,0,0,0.22)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 999 };
+  const cardStyle = { background: "#fff", padding: "2em", borderRadius: "10px", minWidth: "320px", boxShadow: "0 2px 12px rgba(0,0,0,0.15)", position: "relative" };
 
   const NUM_FILAS_HISTORIAL = 9;
   const filasHistorialMostrar =
@@ -289,13 +295,9 @@ export default function ComprarAcciones({ usuario, nombre }) {
       </div>
 
       {loading ? (
-        <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
-          Cargando intenciones de venta...
-        </div>
+        <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>Cargando intenciones de venta...</div>
       ) : intencionesFiltradas.length === 0 ? (
-        <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
-          No hay intenciones de venta disponibles.
-        </div>
+        <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>No hay intenciones de venta disponibles.</div>
       ) : (
         <table style={tableStyle}>
           <thead>
@@ -313,18 +315,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
                 <td style={thTdStyle}>{fila.cantidad}</td>
                 <td style={thTdStyle}>{fila.precio}</td>
                 <td style={thTdStyle}>
-                  <button
-                    onClick={() => handleComprar(fila)}
-                    style={{
-                      fontSize: 16,
-                      padding: "2px 12px",
-                      background: "#388E3C",
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: 4,
-                      cursor: "pointer"
-                    }}
-                  >
+                  <button onClick={() => handleComprar(fila)} style={{ fontSize: 16, padding: "2px 12px", background: "#388E3C", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>
                     Comprar
                   </button>
                 </td>
@@ -337,58 +328,12 @@ export default function ComprarAcciones({ usuario, nombre }) {
       {modalOpen && (
         <div style={modalStyle}>
           <div style={cardStyle}>
-            <button
-              onClick={() => setModalOpen(false)}
-              style={{
-                position: "absolute",
-                top: 8,
-                right: 8,
-                fontSize: "1.2em",
-                background: "none",
-                border: "none",
-                cursor: "pointer"
-              }}
-              aria-label="Cerrar"
-            >
-              ✖
-            </button>
-
-            <div style={{ marginBottom: "14px", fontSize: "17px" }}>
-              Ingrese la cantidad que desea comprar
-            </div>
-            <input
-              type="text"
-              placeholder="Cantidad"
-              value={cantidadComprar}
-              onChange={e => setCantidadComprar(e.target.value)}
-              style={{
-                width: "100%",
-                fontSize: "18px",
-                padding: "8px",
-                marginBottom: "12px",
-                border: "1px solid #bbb",
-                borderRadius: "4px"
-              }}
-            />
-            {error && (
-              <div style={{ color: "#d32f2f", marginBottom: "12px" }}>
-                {error}
-              </div>
-            )}
+            <button onClick={() => setModalOpen(false)} style={{ position: "absolute", top: 8, right: 8, fontSize: "1.2em", background: "none", border: "none", cursor: "pointer" }} aria-label="Cerrar">✖</button>
+            <div style={{ marginBottom: "14px", fontSize: "17px" }}>Ingrese la cantidad que desea comprar</div>
+            <input type="text" placeholder="Cantidad" value={cantidadComprar} onChange={e => setCantidadComprar(e.target.value)} style={{ width: "100%", fontSize: "18px", padding: "8px", marginBottom: "12px", border: "1px solid #bbb", borderRadius: "4px" }} />
+            {error && <div style={{ color: "#d32f2f", marginBottom: "12px" }}>{error}</div>}
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button
-                onClick={handleEnviarCompra}
-                disabled={!cantidadValida || enviando}
-                style={{
-                  fontSize: 16,
-                  padding: "7px 22px",
-                  background: cantidadValida ? "#007bff" : "#bbb",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 4,
-                  cursor: cantidadValida ? "pointer" : "not-allowed"
-                }}
-              >
+              <button onClick={handleEnviarCompra} disabled={!cantidadValida || enviando} style={{ fontSize: 16, padding: "7px 22px", background: cantidadValida ? "#007bff" : "#bbb", color: "#fff", border: "none", borderRadius: 4, cursor: cantidadValida ? "pointer" : "not-allowed" }}>
                 {enviando ? "Enviando..." : "Enviar"}
               </button>
             </div>
@@ -398,36 +343,19 @@ export default function ComprarAcciones({ usuario, nombre }) {
 
       <h3 style={{ marginTop: "32px" }}>Historial de mis compras de acciones:</h3>
       {loadingHistorial ? (
-        <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
-          Cargando historial...
-        </div>
+        <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>Cargando historial...</div>
       ) : (
-        <div
-          style={{
-            maxHeight: "360px",
-            overflowY: "auto",
-            borderRadius: "8px",
-            border: "1px solid #eee"
-          }}
-        >
+        <div style={{ maxHeight: "360px", overflowY: "auto", borderRadius: "8px", border: "1px solid #eee" }}>
           <table style={tableStyle}>
             <thead>
-              <tr>
-                {columnasMostrar.map(col => (
-                  <th key={col.key} style={thStyle}>{col.label}</th>
-                ))}
-              </tr>
+              <tr>{columnasMostrar.map(col => <th key={col.key} style={thStyle}>{col.label}</th>)}</tr>
             </thead>
             <tbody>
               {filasHistorialMostrar.map((fila, idx) => (
                 <tr key={idx}>
                   {columnasMostrar.map(col => (
                     <td key={col.key} style={thTdStyle}>
-                      {fila && fila[col.key]
-                        ? col.key === "hora"
-                          ? new Date(fila.hora).toLocaleString()
-                          : fila[col.key]
-                        : ""}
+                      {fila && fila[col.key] ? (col.key === "hora" ? new Date(fila.hora).toLocaleString() : fila[col.key]) : ""}
                     </td>
                   ))}
                 </tr>
