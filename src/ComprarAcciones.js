@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import { io } from "socket.io-client";
 
 const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
+// socket.io-client por defecto usará path "/socket.io" que coincide con tu servidor socket.io
 
 export default function ComprarAcciones({ usuario, nombre }) {
   const [intenciones, setIntenciones] = useState([]);
@@ -16,18 +18,12 @@ export default function ComprarAcciones({ usuario, nombre }) {
   const [historialLimpio, setHistorialLimpio] = useState([]);
   const [loadingHistorial, setLoadingHistorial] = useState(true);
 
-  const [isWsConnected, setIsWsConnected] = useState(false);
-
-  // refs para controlar ws/polling entre renders
-  const wsRef = useRef(null);
-  const reconnectAttemptsRef = useRef(0);
-  const pollIntervalRef = useRef(null);
-  const reconnectTimeoutRef = useRef(null);
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
+  const socketRef = useRef(null);
 
   const jugadorNumero = usuario.match(/\d+/)?.[0];
   const jugadorActual = jugadorNumero ? `Jugador ${jugadorNumero}` : "Jugador";
 
-  // fetchIntenciones y fetchHistorialLimpio son usados en varios sitios: los definimos con useCallback
   const fetchIntenciones = useCallback(async () => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
@@ -54,7 +50,6 @@ export default function ComprarAcciones({ usuario, nombre }) {
     }
   }, []);
 
-  // obtiene el "momento" actual (si existe)
   useEffect(() => {
     const fetchMomento = async () => {
       try {
@@ -68,114 +63,53 @@ export default function ComprarAcciones({ usuario, nombre }) {
     fetchMomento();
   }, []);
 
-  // carga inicial de datos
+  // carga inicial
   useEffect(() => {
     fetchIntenciones();
     fetchHistorialLimpio();
   }, [fetchIntenciones, fetchHistorialLimpio]);
 
-  // Lógica WebSocket con reconexión y fallback polling
+  // socket.io: conectar y escuchar eventos
   useEffect(() => {
-    // construye URL WS a partir de BACKEND_URL
-    let wsUrl;
-    try {
-      const urlObj = new URL(BACKEND_URL);
-      const protocol = urlObj.protocol === "https:" ? "wss" : "ws";
-      // Si tu servidor WS está en otra ruta, cámbiala (ej: `${protocol}://${urlObj.host}/ws`)
-      wsUrl = `${protocol}://${urlObj.host}/`;
-    } catch (e) {
-      console.error("BACKEND_URL inválida para WebSocket:", BACKEND_URL, e);
-      wsUrl = null;
-    }
+    // crea conexión socket.io (usará /socket.io por defecto)
+    const socket = io(BACKEND_URL, {
+      transports: ["websocket"],
+      // si necesitas opciones CORS/headers/auth agregar aquí
+    });
+    socketRef.current = socket;
 
-    let stopped = false;
+    socket.on("connect", () => {
+      console.log("socket.io conectado", socket.id);
+      setIsSocketConnected(true);
+    });
 
-    const startPolling = () => {
-      if (pollIntervalRef.current) return;
-      // polling cada 8s cuando WS no está disponible
-      pollIntervalRef.current = setInterval(() => {
-        fetchIntenciones();
-        fetchHistorialLimpio();
-      }, 8000);
-      console.log("Polling: ON");
-    };
+    socket.on("disconnect", (reason) => {
+      console.warn("socket.io desconectado:", reason);
+      setIsSocketConnected(false);
+    });
 
-    const stopPolling = () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-        console.log("Polling: OFF");
-      }
-    };
+    // eventos que tu servidor emite (según server.js)
+    socket.on("intenciones_de_venta", (payload) => {
+      // payload es array de intenciones
+      console.log("evento intenciones_de_venta recibido", payload);
+      setIntenciones(payload || []);
+      setLoading(false);
+    });
 
-    const connect = () => {
-      if (!wsUrl || stopped) {
-        setIsWsConnected(false);
-        startPolling();
-        return;
-      }
+    socket.on("historial_limpio", (payload) => {
+      console.log("evento historial_limpio recibido", payload);
+      setHistorialLimpio(payload || []);
+      setLoadingHistorial(false);
+    });
 
-      try {
-        const ws = new WebSocket(wsUrl);
-        wsRef.current = ws;
+    // También puedes escuchar otros eventos si te interesan:
+    // socket.on('tabla_momentos', …), socket.on('regulador_acciones', …), etc.
 
-        ws.onopen = () => {
-          console.log("WS conectado a", wsUrl);
-          reconnectAttemptsRef.current = 0;
-          setIsWsConnected(true);
-          stopPolling();
-        };
-
-        ws.onmessage = (ev) => {
-          // cualquier mensaje provoca refresco. Si quieres parsear tipos, adapta aquí.
-          try {
-            const data = JSON.parse(ev.data);
-            console.log("WS mensaje recibido:", data);
-          } catch (e) {
-            console.log("WS mensaje (no JSON):", ev.data);
-          }
-          fetchIntenciones();
-          fetchHistorialLimpio();
-        };
-
-        ws.onclose = (ev) => {
-          console.warn("WS cerrado:", ev.reason || ev);
-          setIsWsConnected(false);
-          // schedule reconnect con backoff exponencial (hasta 30s)
-          reconnectAttemptsRef.current++;
-          const timeout = Math.min(30000, 1000 * 2 ** reconnectAttemptsRef.current);
-          reconnectTimeoutRef.current = setTimeout(() => {
-            if (!stopped) connect();
-          }, timeout);
-          // inicia polling como fallback mientras reconecta
-          startPolling();
-        };
-
-        ws.onerror = (err) => {
-          console.error("WS error:", err);
-        };
-      } catch (err) {
-        console.error("No se pudo crear WebSocket:", err);
-        setIsWsConnected(false);
-        startPolling();
-      }
-    };
-
-    connect();
-
+    // cleanup al desmontar
     return () => {
-      stopped = true;
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
-      if (wsRef.current) {
-        try { wsRef.current.close(); } catch (e) { /* ignore */ }
-        wsRef.current = null;
-      }
-      stopPolling();
+      try { socket.disconnect(); } catch (e) { /* ignore */ }
+      socketRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchIntenciones, fetchHistorialLimpio]);
 
   const intencionesFiltradas = intenciones.filter(
@@ -235,7 +169,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
         setError("Error al registrar la compra.");
       } else {
         setModalOpen(false);
-        // tras compra exitosa refrescamos manualmente (en caso de que el servidor no notifique inmediatamente)
+        // el socket.io server emitirá historial e intenciones; si tarda, hacemos refresh inmediato
         fetchIntenciones();
         fetchHistorialLimpio();
       }
@@ -257,7 +191,6 @@ export default function ComprarAcciones({ usuario, nombre }) {
     { key: "precio", label: "Precio" },
     { key: "hora", label: "Hora" },
     { key: "efectivo", label: "Efectivo" }
-    // Ocultas: id, momento, estado, vendedor (Ofertante)
   ];
 
   const tableStyle = {
@@ -298,7 +231,6 @@ export default function ComprarAcciones({ usuario, nombre }) {
     position: "relative"
   };
 
-  // MEJORA: Mostrar hasta 9 filas en historial de compras, con scroll y filas vacías si faltan
   const NUM_FILAS_HISTORIAL = 9;
   const filasHistorialMostrar =
     misComprasHistorial.length < NUM_FILAS_HISTORIAL
@@ -309,9 +241,8 @@ export default function ComprarAcciones({ usuario, nombre }) {
     <div>
       <h2>Intenciones de venta de otros jugadores</h2>
 
-      {/* indicador de estado WS (opcional, para debug/UX) */}
-      <div style={{ marginBottom: 8, color: isWsConnected ? "#1b5e20" : "#666", fontSize: 13 }}>
-        {isWsConnected ? "Conectado (tiempo real)" : "Desconectado (caída a polling cada 8s)"}
+      <div style={{ marginBottom: 8, color: isSocketConnected ? "#1b5e20" : "#666", fontSize: 13 }}>
+        {isSocketConnected ? "Conectado (tiempo real)" : "Desconectado (intentando reconnect)"}
       </div>
 
       {loading ? (
@@ -378,6 +309,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
             >
               ✖
             </button>
+
             <div style={{ marginBottom: "14px", fontSize: "17px" }}>
               Ingrese la cantidad que desea comprar
             </div>
@@ -421,7 +353,6 @@ export default function ComprarAcciones({ usuario, nombre }) {
         </div>
       )}
 
-      {/* NUEVA SECCIÓN: HISTORIAL DE COMPRAS DE ACCIONES */}
       <h3 style={{ marginTop: "32px" }}>Historial de mis compras de acciones:</h3>
       {loadingHistorial ? (
         <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
@@ -430,7 +361,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
       ) : (
         <div
           style={{
-            maxHeight: "360px", // 9 filas * 40px aprox
+            maxHeight: "360px",
             overflowY: "auto",
             borderRadius: "8px",
             border: "1px solid #eee"
