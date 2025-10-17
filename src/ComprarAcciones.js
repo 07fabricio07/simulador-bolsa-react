@@ -2,7 +2,6 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { io } from "socket.io-client";
 
 const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
-// socket.io-client por defecto usará path "/socket.io" que coincide con tu servidor socket.io
 
 export default function ComprarAcciones({ usuario, nombre }) {
   const [intenciones, setIntenciones] = useState([]);
@@ -28,7 +27,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
     try {
       const res = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
       const data = await res.json();
-      setIntenciones(data.filas || []);
+      setIntenciones(data.filas || data || []);
     } catch (err) {
       console.error("Error fetch intenciones:", err);
     } finally {
@@ -41,7 +40,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
       setLoadingHistorial(true);
       const res = await fetch(`${BACKEND_URL}/api/historial-limpio`);
       const data = await res.json();
-      setHistorialLimpio(data.filas || []);
+      setHistorialLimpio(data.filas || data || []);
     } catch (err) {
       console.error("Error fetch historial limpio:", err);
       setHistorialLimpio([]);
@@ -69,12 +68,10 @@ export default function ComprarAcciones({ usuario, nombre }) {
     fetchHistorialLimpio();
   }, [fetchIntenciones, fetchHistorialLimpio]);
 
-  // socket.io: conectar y escuchar eventos
+  // socket.io: conectar y escuchar eventos (manejo tolerante de payloads)
   useEffect(() => {
-    // crea conexión socket.io (usará /socket.io por defecto)
     const socket = io(BACKEND_URL, {
-      transports: ["websocket"],
-      // si necesitas opciones CORS/headers/auth agregar aquí
+      transports: ["websocket"]
     });
     socketRef.current = socket;
 
@@ -88,32 +85,65 @@ export default function ComprarAcciones({ usuario, nombre }) {
       setIsSocketConnected(false);
     });
 
-    // eventos que tu servidor emite (según server.js)
+    // Handler tolerante: acepta array directo o { filas: [...] }
     socket.on("intenciones_de_venta", (payload) => {
-      // payload es array de intenciones
-      console.log("evento intenciones_de_venta recibido", payload);
-      setIntenciones(payload || []);
+      const arr = Array.isArray(payload) ? payload : (payload && payload.filas) ? payload.filas : [];
+      console.log("evento intenciones_de_venta recibido", arr);
+      setIntenciones(arr);
       setLoading(false);
     });
 
     socket.on("historial_limpio", (payload) => {
-      console.log("evento historial_limpio recibido", payload);
-      setHistorialLimpio(payload || []);
+      const arr = Array.isArray(payload) ? payload : (payload && payload.filas) ? payload.filas : [];
+      console.log("evento historial_limpio recibido", arr);
+      setHistorialLimpio(arr);
       setLoadingHistorial(false);
     });
 
-    // También puedes escuchar otros eventos si te interesan:
-    // socket.on('tabla_momentos', …), socket.on('regulador_acciones', …), etc.
+    // Otros eventos útiles opcionales:
+    socket.on("connect_error", (err) => {
+      console.error("socket connect_error:", err);
+    });
 
-    // cleanup al desmontar
     return () => {
       try { socket.disconnect(); } catch (e) { /* ignore */ }
       socketRef.current = null;
     };
   }, [fetchIntenciones, fetchHistorialLimpio]);
 
+  // función robusta para detectar si una fila corresponde al jugador actual
+  const filaCorrespondeAComprador = (fila) => {
+    if (!fila || Object.keys(fila).length === 0) return false; // filler row
+    const jugadorNorm = jugadorActual.toString().toLowerCase().trim(); // "jugador 2"
+    const jugadorNormNoSpace = jugadorNorm.replace(/\s+/g, ""); // "jugador2"
+    const num = jugadorNumero ? jugadorNumero.toString() : "";
+
+    // Recolecta valores relevantes posibles (comprador, Comprador, vendedor, etc.) y también todo joined
+    const candidates = [];
+    if (fila.comprador) candidates.push(String(fila.comprador));
+    if (fila.Comprador) candidates.push(String(fila.Comprador));
+    if (fila.vendedor) candidates.push(String(fila.vendedor));
+    if (fila.Vendedor) candidates.push(String(fila.Vendedor));
+    // incluye cualquier otro valor textual para aumentar tolerancia
+    try {
+      const other = Object.values(fila).filter(v => v !== null && v !== undefined).join(" ");
+      candidates.push(other);
+    } catch (_) { /* ignore */ }
+
+    const joined = candidates.join(" ").toLowerCase();
+
+    // Coincidencias posibles:
+    if (joined.includes(jugadorNorm)) return true;            // "jugador 2"
+    if (joined.includes(jugadorNormNoSpace)) return true;    // "jugador2"
+    if (num && joined.includes(num)) return true;            // "2"
+    // También puede venir la forma "jugador uno" o "Jugador 1 (jugador1)"; los anteriores cubren la mayoría.
+    return false;
+  };
+
+  const misComprasHistorial = historialLimpio.filter(filaCorrespondeAComprador);
+
   const intencionesFiltradas = intenciones.filter(
-    fila => fila.jugador !== jugadorActual && fila.cantidad > 0
+    fila => fila && fila.jugador !== jugadorActual && fila.cantidad > 0
   );
 
   const handleComprar = (fila) => {
@@ -142,9 +172,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
       const cantidadDisponible = filaIntent ? filaIntent.cantidad : 0;
 
       let estado = "desaprobada";
-      if (cantidadDisponible >= cantidadInt) {
-        estado = "aprobada";
-      }
+      if (cantidadDisponible >= cantidadInt) estado = "aprobada";
 
       const efectivo = cantidadInt * filaSeleccionada.precio;
       const body = {
@@ -169,7 +197,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
         setError("Error al registrar la compra.");
       } else {
         setModalOpen(false);
-        // el socket.io server emitirá historial e intenciones; si tarda, hacemos refresh inmediato
+        // refresco inmediato (por si la emisión tarda)
         fetchIntenciones();
         fetchHistorialLimpio();
       }
@@ -178,11 +206,6 @@ export default function ComprarAcciones({ usuario, nombre }) {
     }
     setEnviando(false);
   };
-
-  // Historial de compras: solo las filas donde el jugador actual es el comprador
-  const misComprasHistorial = historialLimpio.filter(
-    fila => fila.comprador === jugadorActual
-  );
 
   // Columnas a mostrar en historial: quitada la columna "Ofertante" (vendedor)
   const columnasMostrar = [
@@ -380,7 +403,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
                 <tr key={idx}>
                   {columnasMostrar.map(col => (
                     <td key={col.key} style={thTdStyle}>
-                      {fila[col.key]
+                      {fila && fila[col.key]
                         ? col.key === "hora"
                           ? new Date(fila.hora).toLocaleString()
                           : fila[col.key]
