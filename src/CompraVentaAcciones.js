@@ -14,6 +14,7 @@ function normalizePayload(datos) {
   if (datos && datos.id != null) return [datos];
   return [];
 }
+
 function isAllEmptyObjects(arr) {
   if (!Array.isArray(arr)) return false;
   if (arr.length === 0) return false;
@@ -22,11 +23,16 @@ function isAllEmptyObjects(arr) {
     return Object.keys(item).length === 0;
   });
 }
+
+// Merge inteligente: si incoming >= current -> snapshot (reemplazar).
+// Si incoming es más pequeño -> actualizar solo por id (merge parcial).
 function mergeIntenciones(currentArr = [], incomingArr = []) {
   if (!Array.isArray(incomingArr) || incomingArr.length === 0) return currentArr.slice();
+
   if (!Array.isArray(currentArr) || currentArr.length === 0 || incomingArr.length >= currentArr.length) {
     return incomingArr.slice().sort((a, b) => (a.id || 0) - (b.id || 0));
   }
+
   const map = new Map();
   currentArr.forEach(item => {
     if (item && item.id != null) map.set(item.id, { ...item });
@@ -40,13 +46,20 @@ function mergeIntenciones(currentArr = [], incomingArr = []) {
   return Array.from(map.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
 }
 
-/* ---------- Component ---------- */
+/* ---------- Component v40 ---------- */
 export default function CompraVentaAcciones({ usuario, nombre }) {
-  // Estados para inputs
+  // Form states
   const [accion, setAccion] = useState("");
   const [cantidad, setCantidad] = useState("");
   const [precio, setPrecio] = useState("");
+
+  // Data states
   const [intenciones, setIntenciones] = useState([]);
+  const [historialLimpio, setHistorialLimpio] = useState([]);
+
+  // Loading & UI states
+  const [loading, setLoading] = useState(true);
+  const [loadingHistorial, setLoadingHistorial] = useState(true);
   const [error, setError] = useState("");
   const [anulandoId, setAnulandoId] = useState(null);
 
@@ -54,25 +67,26 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
   const [modalAnularTodas, setModalAnularTodas] = useState(false);
   const [anulandoTodas, setAnulandoTodas] = useState(false);
 
-  // Historial limpio
-  const [historialLimpio, setHistorialLimpio] = useState([]);
-  const [loadingHistorial, setLoadingHistorial] = useState(true);
+  // Compra modal
+  const [modalOpen, setModalOpen] = useState(false);
+  const [cantidadComprar, setCantidadComprar] = useState("");
+  const [filaSeleccionada, setFilaSeleccionada] = useState(null);
+  const [enviando, setEnviando] = useState(false);
 
-  // socket
+  // Socket state + refs
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const socketRef = useRef(null);
-
-  // refs para estado actual (evitar sobrescrituras)
   const intencionesRef = useRef([]);
   const historialRef = useRef([]);
 
-  // jugador
+  // Jugador actual
   const jugadorNumero = usuario?.match(/\d+/)?.[0];
   const jugador = jugadorNumero ? `Jugador ${jugadorNumero}` : "Jugador";
 
-  // fetch intenciones
+  /* ---------- Fetchers ---------- */
   const fetchIntenciones = useCallback(async () => {
     try {
+      setLoading(true);
       const res = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
       const data = await res.json();
       const arr = normalizePayload(data);
@@ -81,14 +95,11 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     } catch (err) {
       console.error("Error fetch intenciones:", err);
       setError("No se pudo consultar intenciones de venta.");
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchIntenciones();
-  }, [fetchIntenciones]);
-
-  // fetch historial limpio
   const fetchHistorialLimpio = useCallback(async () => {
     try {
       setLoadingHistorial(true);
@@ -106,11 +117,27 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     }
   }, []);
 
+  // Momento actual (usado en compras)
+  const [momentoActual, setMomentoActual] = useState(null);
   useEffect(() => {
-    fetchHistorialLimpio();
-  }, [fetchHistorialLimpio]);
+    const fetchMomento = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/tabla-momentos`);
+        const data = await res.json();
+        setMomentoActual(data.filas?.[1]?.Momento ?? null);
+      } catch (err) {
+        setMomentoActual(null);
+      }
+    };
+    fetchMomento();
+  }, []);
 
-  // Validaciones
+  useEffect(() => {
+    fetchIntenciones();
+    fetchHistorialLimpio();
+  }, [fetchIntenciones, fetchHistorialLimpio]);
+
+  /* ---------- Actions ---------- */
   const cantidadValida = /^\d+$/.test(cantidad) && Number(cantidad) > 0;
   const precioValido = (() => {
     if (!/^\d+(\.\d{1,2})?$/.test(precio)) return false;
@@ -119,7 +146,6 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
   const accionValida = ACCIONES.includes(accion);
   const puedeEnviar = cantidadValida && precioValido && accionValida;
 
-  // Enviar intención
   const handleEnviar = async () => {
     setError("");
     if (!puedeEnviar) return;
@@ -142,7 +168,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
       setCantidad("");
       setPrecio("");
       setAccion("");
-      // fallback immediate sync
+      // fallback: sincronizar inmediatamente (el servidor también emitirá incremental)
       await fetchIntenciones();
     } catch (err) {
       console.error("Error handleEnviar:", err);
@@ -150,7 +176,6 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     }
   };
 
-  // misIntenciones
   const misIntenciones = intenciones.filter(fila => fila && fila.jugador === jugador && fila.cantidad > 0);
 
   // Anular individual
@@ -169,7 +194,6 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
         setAnulandoId(null);
         return;
       }
-      // fallback sync
       await fetchIntenciones();
     } catch (err) {
       console.error("Error handleAnular:", err);
@@ -179,7 +203,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     }
   };
 
-  // Anular todas (funcionalidad reparada y robusta)
+  // Anular todas (paralelizado y robusto)
   const handleAnularTodas = async () => {
     if (!misIntenciones || misIntenciones.length === 0) {
       setModalAnularTodas(false);
@@ -188,7 +212,6 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     setAnulandoTodas(true);
     setError("");
     try {
-      // Ejecutar las actualizaciones en paralelo para mayor velocidad
       const promises = misIntenciones.map(fila =>
         fetch(`${BACKEND_URL}/api/intenciones-de-venta/${fila.id}`, {
           method: "PUT",
@@ -196,16 +219,13 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
           body: JSON.stringify({ cantidad: 0 })
         }).then(async res => {
           if (!res.ok) {
-            // intenta leer cuerpo con mensaje de error si existe
             const errBody = await res.json().catch(() => ({}));
             throw new Error(errBody.error || `Error al anular intención id=${fila.id}`);
           }
           return res.json();
         })
       );
-      // await all (si alguno falla, lo capturamos)
       await Promise.all(promises);
-      // Tras terminar, sincronizamos la lista (server emite intencion:update/delete; igual hacemos fetch fallback)
       await fetchIntenciones();
     } catch (err) {
       console.error("Error handleAnularTodas:", err);
@@ -216,45 +236,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     }
   };
 
-  // Filtrar historial de ventas (vendedor = jugador actual)
-  const filaCorrespondeAVendedor = (fila) => {
-    if (!fila || Object.keys(fila).length === 0) return false;
-    const jugadorNorm = jugador.toString().toLowerCase().trim();
-    const jugadorNormNoSpace = jugadorNorm.replace(/\s+/g, "");
-    const num = jugadorNumero ? jugadorNumero.toString() : "";
-
-    const candidates = [];
-    if (fila.vendedor) candidates.push(String(fila.vendedor));
-    if (fila.Vendedor) candidates.push(String(fila.Vendedor));
-    try {
-      const other = Object.values(fila).filter(v => v !== null && v !== undefined).join(" ");
-      candidates.push(other);
-    } catch (_) {}
-
-    const joined = candidates.join(" ").toLowerCase();
-    if (joined.includes(jugadorNorm)) return true;
-    if (joined.includes(jugadorNormNoSpace)) return true;
-    if (num && joined.includes(num)) return true;
-    return false;
-  };
-  const misVentasHistorial = historialLimpio.filter(filaCorrespondeAVendedor);
-
-  // columnas historial (venta)
-  const columnasMostrar = [
-    { key: "accion", label: "Acción" },
-    { key: "cantidad", label: "Cantidad" },
-    { key: "precio", label: "Precio" },
-    { key: "hora", label: "Hora" },
-    { key: "efectivo", label: "Efectivo" }
-  ];
-
-  const NUM_FILAS_HISTORIAL = 9;
-  const filasHistorialMostrar =
-    misVentasHistorial.length < NUM_FILAS_HISTORIAL
-      ? [...misVentasHistorial, ...Array(NUM_FILAS_HISTORIAL - misVentasHistorial.length).fill({})]
-      : misVentasHistorial;
-
-  /* ---------- Socket.io: listeners (incrementales + snapshots) ---------- */
+  /* ---------- Socket.IO: incremental listeners + snapshots ---------- */
   useEffect(() => {
     const socket = io(BACKEND_URL, { transports: ["websocket"] });
     socketRef.current = socket;
@@ -298,7 +280,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
       historialRef.current = next;
     });
 
-    // Backwards-compatible snapshots
+    // Backwards-compatible snapshots (server may still emit)
     socket.on("intenciones_de_venta", (payload) => {
       const arr = normalizePayload(payload);
       if (!arr) return;
@@ -340,7 +322,43 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ---------- Render UI ---------- */
+  /* ---------- Historial vendedor helpers ---------- */
+  const filaCorrespondeAVendedor = (fila) => {
+    if (!fila || Object.keys(fila).length === 0) return false;
+    const jugadorNorm = jugador.toString().toLowerCase().trim();
+    const jugadorNormNoSpace = jugadorNorm.replace(/\s+/g, "");
+    const num = jugadorNumero ? jugadorNumero.toString() : "";
+    const candidates = [];
+    if (fila.vendedor) candidates.push(String(fila.vendedor));
+    if (fila.Vendedor) candidates.push(String(fila.Vendedor));
+    try {
+      const other = Object.values(fila).filter(v => v !== null && v !== undefined).join(" ");
+      candidates.push(other);
+    } catch (_) {}
+    const joined = candidates.join(" ").toLowerCase();
+    if (joined.includes(jugadorNorm)) return true;
+    if (joined.includes(jugadorNormNoSpace)) return true;
+    if (num && joined.includes(num)) return true;
+    return false;
+  };
+
+  const misVentasHistorial = historialLimpio.filter(filaCorrespondeAVendedor);
+
+  /* ---------- Render ---------- */
+  const columnasMostrar = [
+    { key: "accion", label: "Acción" },
+    { key: "cantidad", label: "Cantidad" },
+    { key: "precio", label: "Precio" },
+    { key: "hora", label: "Hora" },
+    { key: "efectivo", label: "Efectivo" }
+  ];
+
+  const NUM_FILAS_HISTORIAL = 9;
+  const filasHistorialMostrar =
+    misVentasHistorial.length < NUM_FILAS_HISTORIAL
+      ? [...misVentasHistorial, ...Array(NUM_FILAS_HISTORIAL - misVentasHistorial.length).fill({})]
+      : misVentasHistorial;
+
   const tableStyle = { width: "100%", borderCollapse: "collapse", marginBottom: "24px" };
   const thTdStyle = { border: "1px solid #ddd", padding: "8px", textAlign: "center" };
   const thStyle = { ...thTdStyle, background: "#f4f4f4", fontWeight: "bold" };
@@ -362,12 +380,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
           style={{ width: 100, fontSize: 18, padding: 4, borderColor: precio && !precioValido ? "#d32f2f" : undefined }} />
 
         <button onClick={handleEnviar} disabled={!puedeEnviar}
-          style={{
-            fontSize: 18, padding: "4px 20px",
-            background: puedeEnviar ? "#007bff" : "#ccc",
-            color: "#fff", border: "none", borderRadius: 4,
-            cursor: puedeEnviar ? "pointer" : "not-allowed"
-          }}>
+          style={{ fontSize: 18, padding: "4px 20px", background: puedeEnviar ? "#007bff" : "#ccc", color: "#fff", border: "none", borderRadius: 4, cursor: puedeEnviar ? "pointer" : "not-allowed" }}>
           Enviar
         </button>
       </div>
@@ -379,8 +392,8 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
       {error && <div style={{ color: "#d32f2f", marginBottom: 16 }}>{error}</div>}
 
       <h3>Mis intenciones de venta registradas:</h3>
+
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        {/* Mostrar el botón siempre pero deshabilitado si no hay intenciones */}
         <button
           onClick={() => setModalAnularTodas(true)}
           disabled={misIntenciones.length === 0}
@@ -398,28 +411,17 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
         </button>
       </div>
 
-      {/* Modal confirmación Anular todas */}
       {modalAnularTodas && (
         <div style={{
           position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
           background: "rgba(0,0,0,0.25)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          zIndex: 1000
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000
         }}>
-          <div style={{
-            background: "#fff", padding: "32px 24px", borderRadius: 10,
-            boxShadow: "0 8px 24px #999", textAlign: "center", minWidth: 340
-          }}>
+          <div style={{ background: "#fff", padding: "32px 24px", borderRadius: 10, boxShadow: "0 8px 24px #999", textAlign: "center", minWidth: 340 }}>
             <div style={{ fontSize: 20, marginBottom: 24 }}>¿Deseas anular todas tus intenciones?</div>
             <div style={{ display: "flex", gap: 24, justifyContent: "center" }}>
-              <button onClick={() => setModalAnularTodas(false)} style={{
-                fontSize: 18, padding: "8px 32px", background: "#19b837", color: "#fff",
-                border: "none", borderRadius: 6, cursor: "pointer", fontWeight: "bold"
-              }}>No</button>
-              <button onClick={handleAnularTodas} disabled={anulandoTodas} style={{
-                fontSize: 18, padding: "8px 32px", background: "#d32f2f", color: "#fff",
-                border: "none", borderRadius: 6, cursor: anulandoTodas ? "not-allowed" : "pointer", fontWeight: "bold"
-              }}>{anulandoTodas ? "..." : "Sí"}</button>
+              <button onClick={() => setModalAnularTodas(false)} style={{ fontSize: 18, padding: "8px 32px", background: "#19b837", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: "bold" }}>No</button>
+              <button onClick={handleAnularTodas} disabled={anulandoTodas} style={{ fontSize: 18, padding: "8px 32px", background: "#d32f2f", color: "#fff", border: "none", borderRadius: 6, cursor: anulandoTodas ? "not-allowed" : "pointer", fontWeight: "bold" }}>{anulandoTodas ? "..." : "Sí"}</button>
             </div>
           </div>
         </div>
@@ -444,9 +446,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
                 <td style={thTdStyle}>{fila.cantidad}</td>
                 <td style={thTdStyle}>{fila.precio}</td>
                 <td style={thTdStyle}>
-                  <button onClick={() => handleAnular(fila.id)} disabled={anulandoId === fila.id} style={{
-                    fontSize: 16, padding: "2px 12px", background: "#d32f2f", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer"
-                  }}>{anulandoId === fila.id ? "..." : "Anular"}</button>
+                  <button onClick={() => handleAnular(fila.id)} disabled={anulandoId === fila.id} style={{ fontSize: 16, padding: "2px 12px", background: "#d32f2f", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>{anulandoId === fila.id ? "..." : "Anular"}</button>
                 </td>
               </tr>
             ))}
