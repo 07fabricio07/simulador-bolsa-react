@@ -20,6 +20,10 @@ export default function ComprarAcciones({ usuario, nombre }) {
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const socketRef = useRef(null);
 
+  // refs para conservar estado actual y comparar en handlers
+  const historialRef = useRef([]);
+  const intencionesRef = useRef([]);
+
   const jugadorNumero = usuario.match(/\d+/)?.[0];
   const jugadorActual = jugadorNumero ? `Jugador ${jugadorNumero}` : "Jugador";
 
@@ -27,7 +31,9 @@ export default function ComprarAcciones({ usuario, nombre }) {
     try {
       const res = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
       const data = await res.json();
-      setIntenciones(data.filas || data || []);
+      const arr = data.filas || data || [];
+      setIntenciones(arr);
+      intencionesRef.current = arr;
     } catch (err) {
       console.error("Error fetch intenciones:", err);
     } finally {
@@ -40,10 +46,13 @@ export default function ComprarAcciones({ usuario, nombre }) {
       setLoadingHistorial(true);
       const res = await fetch(`${BACKEND_URL}/api/historial-limpio`);
       const data = await res.json();
-      setHistorialLimpio(data.filas || data || []);
+      const arr = data.filas || data || [];
+      setHistorialLimpio(arr);
+      historialRef.current = arr;
     } catch (err) {
       console.error("Error fetch historial limpio:", err);
       setHistorialLimpio([]);
+      historialRef.current = [];
     } finally {
       setLoadingHistorial(false);
     }
@@ -89,18 +98,33 @@ export default function ComprarAcciones({ usuario, nombre }) {
     socket.on("intenciones_de_venta", (payload) => {
       const arr = Array.isArray(payload) ? payload : (payload && payload.filas) ? payload.filas : [];
       console.log("evento intenciones_de_venta recibido", arr);
+
+      // Si el servidor envía un array vacío pero ya tenemos intenciones cargadas, IGNORA para no borrar sin motivo.
+      if (Array.isArray(arr) && arr.length === 0 && intencionesRef.current && intencionesRef.current.length > 0) {
+        console.log("Ignorado intenciones_de_venta vacío (cliente ya tiene datos).");
+        return;
+      }
+
       setIntenciones(arr);
+      intencionesRef.current = arr;
       setLoading(false);
     });
 
     socket.on("historial_limpio", (payload) => {
       const arr = Array.isArray(payload) ? payload : (payload && payload.filas) ? payload.filas : [];
       console.log("evento historial_limpio recibido", arr);
+
+      // Si el servidor envía un array vacío pero ya tenemos historial cargado, IGNORA para no borrar sin motivo.
+      if (Array.isArray(arr) && arr.length === 0 && historialRef.current && historialRef.current.length > 0) {
+        console.log("Ignorado historial_limpio vacío (cliente ya tiene datos).");
+        return;
+      }
+
       setHistorialLimpio(arr);
+      historialRef.current = arr;
       setLoadingHistorial(false);
     });
 
-    // Otros eventos útiles opcionales:
     socket.on("connect_error", (err) => {
       console.error("socket connect_error:", err);
     });
@@ -118,13 +142,11 @@ export default function ComprarAcciones({ usuario, nombre }) {
     const jugadorNormNoSpace = jugadorNorm.replace(/\s+/g, ""); // "jugador2"
     const num = jugadorNumero ? jugadorNumero.toString() : "";
 
-    // Recolecta valores relevantes posibles (comprador, Comprador, vendedor, etc.) y también todo joined
     const candidates = [];
     if (fila.comprador) candidates.push(String(fila.comprador));
     if (fila.Comprador) candidates.push(String(fila.Comprador));
     if (fila.vendedor) candidates.push(String(fila.vendedor));
     if (fila.Vendedor) candidates.push(String(fila.Vendedor));
-    // incluye cualquier otro valor textual para aumentar tolerancia
     try {
       const other = Object.values(fila).filter(v => v !== null && v !== undefined).join(" ");
       candidates.push(other);
@@ -132,11 +154,9 @@ export default function ComprarAcciones({ usuario, nombre }) {
 
     const joined = candidates.join(" ").toLowerCase();
 
-    // Coincidencias posibles:
-    if (joined.includes(jugadorNorm)) return true;            // "jugador 2"
-    if (joined.includes(jugadorNormNoSpace)) return true;    // "jugador2"
-    if (num && joined.includes(num)) return true;            // "2"
-    // También puede venir la forma "jugador uno" o "Jugador 1 (jugador1)"; los anteriores cubren la mayoría.
+    if (joined.includes(jugadorNorm)) return true;
+    if (joined.includes(jugadorNormNoSpace)) return true;
+    if (num && joined.includes(num)) return true;
     return false;
   };
 
@@ -197,7 +217,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
         setError("Error al registrar la compra.");
       } else {
         setModalOpen(false);
-        // refresco inmediato (por si la emisión tarda)
+        // el socket.io server emitirá historial e intenciones; si tarda, hacemos refresh inmediato
         fetchIntenciones();
         fetchHistorialLimpio();
       }
