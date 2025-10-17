@@ -129,7 +129,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
     });
 
     socket.on("disconnect", (reason) => {
-      console.warn("socket.io desconectado:", reason);
+      console.warn("socket.io desconectado", reason);
       setIsSocketConnected(false);
     });
 
@@ -239,7 +239,8 @@ export default function ComprarAcciones({ usuario, nombre }) {
     return false;
   }
 
-  function filaCorrespondeAComprador(fila) {
+  // Comprueba campos específicos (comprador/Comprador/etc.) sin falsos positivos por números sueltos.
+  function filaCorrespondeACompradorFallback(fila) {
     if (!fila || typeof fila !== "object") return false;
     const candidateFields = ["comprador", "Comprador", "buyer", "Buyer"];
     for (const key of candidateFields) {
@@ -252,9 +253,29 @@ export default function ComprarAcciones({ usuario, nombre }) {
     return false;
   }
 
-  const misComprasHistorial = historialLimpio.filter(filaCorrespondeAComprador);
+  /**
+   * NEW RULE: The "Historial de mis compras de acciones" MUST show only rows where the
+   * column "Comprador" (if present) equals the current player.
+   *
+   * Behavior:
+   * - If the row contains an explicit "Comprador" or "comprador" field, require it to match the current player.
+   * - Otherwise (no explicit Comprador column), fall back to legacy heuristic that checks common buyer fields.
+   */
+  function filaEsCompraDelJugador(fila) {
+    if (!fila || typeof fila !== "object") return false;
 
-  /* ---------- UI helpers ---------- */
+    if (Object.prototype.hasOwnProperty.call(fila, "Comprador") || Object.prototype.hasOwnProperty.call(fila, "comprador")) {
+      const compradorVal = (fila.Comprador ?? fila.comprador);
+      return compradorVal ? matchesJugadorExact(String(compradorVal)) : false;
+    }
+
+    // fallback
+    return filaCorrespondeACompradorFallback(fila);
+  }
+
+  const misComprasHistorial = historialLimpio.filter(filaEsCompraDelJugador);
+
+  /* ---------- UI helpers (kept simple and consistent) ---------- */
   const columnasMostrar = [
     { key: "accion", label: "Acción" },
     { key: "cantidad", label: "Cantidad" },
