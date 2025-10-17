@@ -19,6 +19,37 @@ function isAllEmptyObjects(arr) {
   });
 }
 
+// Merge inteligente: si incoming es grande (>= current.length) tratamos como snapshot y reemplazamos,
+// si incoming es parcial (más pequeño) actualizamos sólo los ids presentes.
+function mergeIntenciones(currentArr, incomingArr) {
+  if (!Array.isArray(incomingArr) || incomingArr.length === 0) return currentArr.slice();
+
+  // si incoming parece ser un snapshot completo (mismo tamaño o mayor), usamos incoming como fuente de verdad
+  if (!Array.isArray(currentArr) || currentArr.length === 0 || incomingArr.length >= currentArr.length) {
+    // ordenar por id si existe
+    const sorted = incomingArr.slice().sort((a, b) => (a.id || 0) - (b.id || 0));
+    return sorted;
+  }
+
+  // Caso: incoming es parcial -> actualizar solo los ids presentes
+  const map = new Map();
+  currentArr.forEach(item => {
+    if (item && item.id != null) map.set(item.id, { ...item });
+  });
+  incomingArr.forEach(item => {
+    if (item && item.id != null) {
+      const existing = map.get(item.id);
+      if (existing) {
+        map.set(item.id, { ...existing, ...item });
+      } else {
+        map.set(item.id, item);
+      }
+    }
+  });
+  // devolver array ordenado por id
+  return Array.from(map.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
+}
+
 export default function CompraVentaAcciones({ usuario, nombre }) {
   // Estados para los inputs
   const [accion, setAccion] = useState("");
@@ -174,7 +205,6 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
   };
 
   // FILTRO: historial limpio para mis ventas (donde ofertante = jugador actual)
-  // Usamos una comparación tolerante similar a la que usamos en comprar
   const filaCorrespondeAVendedor = (fila) => {
     if (!fila || Object.keys(fila).length === 0) return false;
     const jugadorNorm = jugador.toString().toLowerCase().trim();
@@ -207,25 +237,6 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     { key: "efectivo", label: "Efectivo" }
   ];
 
-  // Estilos para la tabla
-  const tableStyle = {
-    width: "100%",
-    borderCollapse: "collapse",
-    marginBottom: "24px"
-  };
-
-  const thTdStyle = {
-    border: "1px solid #ddd",
-    padding: "8px",
-    textAlign: "center"
-  };
-
-  const thStyle = {
-    ...thTdStyle,
-    background: "#f4f4f4",
-    fontWeight: "bold"
-  };
-
   // Mejoras: mostrar hasta 9 filas en historial, con scroll y filas vacías si faltan
   const NUM_FILAS_HISTORIAL = 9;
   const filasHistorialMostrar =
@@ -233,7 +244,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
       ? [...misVentasHistorial, ...Array(NUM_FILAS_HISTORIAL - misVentasHistorial.length).fill({})]
       : misVentasHistorial;
 
-  // SOCKET.IO: conectar y actualizar intenciones + historial en tiempo real
+  // SOCKET.IO: conectar y actualizar intenciones + historial en tiempo real (ahora con merge inteligente)
   useEffect(() => {
     const socket = io(BACKEND_URL, { transports: ["websocket"] });
     socketRef.current = socket;
@@ -252,19 +263,19 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
       const arr = normalizePayload(payload);
       console.log("evento intenciones_de_venta (CompraVentaAcciones) recibido:", arr);
 
-      // Ignorar payloads compuestos sólo por objetos vacíos
       if (isAllEmptyObjects(arr)) {
         console.log("Ignorado intenciones_de_venta (solo objetos vacíos)");
         return;
       }
-      // Si servidor envía array vacío pero cliente ya tiene datos, ignorar para no borrar UI
       if (Array.isArray(arr) && arr.length === 0 && intencionesRef.current && intencionesRef.current.length > 0) {
         console.log("Ignorado intenciones_de_venta vacío (cliente ya tiene datos).");
         return;
       }
 
-      setIntenciones(arr);
-      intencionesRef.current = arr;
+      // Merge inteligente: si incoming es pequeño -> parcial, merge; si incoming >= current -> snapshot
+      const merged = mergeIntenciones(intencionesRef.current || [], arr);
+      setIntenciones(merged);
+      intencionesRef.current = merged;
     });
 
     socket.on("historial_limpio", (payload) => {
@@ -280,7 +291,6 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
         return;
       }
 
-      // Si llegan datos, ordeno por hora descendente y actualizo
       if (Array.isArray(arr) && arr.length > 0) {
         const sorted = arr.slice().sort((a, b) => {
           const da = a.hora ? new Date(a.hora).getTime() : 0;
@@ -304,8 +314,24 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
       try { socket.disconnect(); } catch (e) { /* ignore */ }
       socketRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Estilos y render (sin cambios en estructura)
+  const tableStyle = {
+    width: "100%",
+    borderCollapse: "collapse",
+    marginBottom: "24px"
+  };
+  const thTdStyle = {
+    border: "1px solid #ddd",
+    padding: "8px",
+    textAlign: "center"
+  };
+  const thStyle = {
+    ...thTdStyle,
+    background: "#f4f4f4",
+    fontWeight: "bold"
+  };
 
   return (
     <div style={{ maxWidth: 700, margin: "auto" }}>
@@ -392,64 +418,6 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
         )}
       </div>
 
-      {modalAnularTodas && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0, left: 0, right: 0, bottom: 0,
-            background: "rgba(0,0,0,0.25)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            zIndex: 1000
-          }}
-        >
-          <div style={{
-            background: "#fff",
-            padding: "32px 24px",
-            borderRadius: 10,
-            boxShadow: "0 8px 24px #999",
-            textAlign: "center",
-            minWidth: 340
-          }}>
-            <div style={{ fontSize: 20, marginBottom: 24 }}>
-              ¿Deseas anular todas tus intenciones?
-            </div>
-            <div style={{ display: "flex", gap: 24, justifyContent: "center" }}>
-              <button
-                onClick={() => setModalAnularTodas(false)}
-                style={{
-                  fontSize: 18,
-                  padding: "8px 32px",
-                  background: "#19b837",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 6,
-                  cursor: "pointer",
-                  fontWeight: "bold"
-                }}
-              >
-                No
-              </button>
-              <button
-                onClick={handleAnularTodas}
-                disabled={anulandoTodas}
-                style={{
-                  fontSize: 18,
-                  padding: "8px 32px",
-                  background: "#d32f2f",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 6,
-                  cursor: anulandoTodas ? "not-allowed" : "pointer",
-                  fontWeight: "bold"
-                }}
-              >
-                {anulandoTodas ? "..." : "Sí"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {misIntenciones.length === 0 ? (
         <div style={{color: "#888", fontSize: "18px", margin: "16px 0"}}>No tienes intenciones de venta activas</div>
       ) : (
@@ -491,21 +459,18 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
         </table>
       )}
 
-      {/* NUEVA SECCIÓN: HISTORIAL DE VENTA DE ACCIONES */}
       <h3 style={{ marginTop: "32px" }}>Historial de mis venta de acciones:</h3>
       {loadingHistorial ? (
         <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>
           Cargando historial...
         </div>
       ) : (
-        <div
-          style={{
-            maxHeight: "360px", // 9 filas * 40px aprox
+        <div style={{
+            maxHeight: "360px",
             overflowY: "auto",
             borderRadius: "8px",
             border: "1px solid #eee"
-          }}
-        >
+          }}>
           <table style={tableStyle}>
             <thead>
               <tr>
