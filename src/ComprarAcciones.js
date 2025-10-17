@@ -29,9 +29,11 @@ function mergeIntenciones(currentArr = [], incomingArr = []) {
   if (!Array.isArray(incomingArr) || incomingArr.length === 0) return currentArr.slice();
 
   if (!Array.isArray(currentArr) || currentArr.length === 0 || incomingArr.length >= currentArr.length) {
+    // snapshot: ordenar por id para determinismo
     return incomingArr.slice().sort((a, b) => (a.id || 0) - (b.id || 0));
   }
 
+  // parcial: actualizar solo por id
   const map = new Map();
   currentArr.forEach(item => {
     if (item && item.id != null) map.set(item.id, { ...item });
@@ -39,13 +41,14 @@ function mergeIntenciones(currentArr = [], incomingArr = []) {
   incomingArr.forEach(item => {
     if (item && item.id != null) {
       const existing = map.get(item.id);
-      map.set(item.id, existing ? { ...existing, ...item } : item);
+      if (existing) map.set(item.id, { ...existing, ...item });
+      else map.set(item.id, item);
     }
   });
   return Array.from(map.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
 }
 
-/* ---------- Componente ---------- */
+/* ---------- Component ---------- */
 export default function ComprarAcciones({ usuario, nombre }) {
   const [intenciones, setIntenciones] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -66,9 +69,10 @@ export default function ComprarAcciones({ usuario, nombre }) {
   const historialRef = useRef([]);
   const intencionesRef = useRef([]);
 
-  const jugadorNumero = usuario.match(/\d+/)?.[0];
+  const jugadorNumero = usuario?.match(/\d+/)?.[0];
   const jugadorActual = jugadorNumero ? `Jugador ${jugadorNumero}` : "Jugador";
 
+  // fetch initial intenciones
   const fetchIntenciones = useCallback(async () => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
@@ -83,6 +87,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
     }
   }, []);
 
+  // fetch initial historial limpio
   const fetchHistorialLimpio = useCallback(async () => {
     try {
       setLoadingHistorial(true);
@@ -100,6 +105,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
     }
   }, []);
 
+  // fetch momento
   useEffect(() => {
     const fetchMomento = async () => {
       try {
@@ -113,13 +119,13 @@ export default function ComprarAcciones({ usuario, nombre }) {
     fetchMomento();
   }, []);
 
-  // carga inicial
+  // initial loads
   useEffect(() => {
     fetchIntenciones();
     fetchHistorialLimpio();
   }, [fetchIntenciones, fetchHistorialLimpio]);
 
-  // SOCKET.IO: listeners incrementales + compatibilidad con snapshots
+  // socket.io: listeners incrementales + compatibility snapshots
   useEffect(() => {
     const socket = io(BACKEND_URL, { transports: ["websocket"] });
     socketRef.current = socket;
@@ -134,7 +140,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
       setIsSocketConnected(false);
     });
 
-    // Incrementales (recomendados)
+    // Incremental events
     socket.on("intencion:create", (payload) => {
       const filas = normalizePayload(payload?.fila ? payload.fila : payload);
       if (!filas || filas.length === 0) return;
@@ -167,7 +173,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
       historialRef.current = next;
     });
 
-    // Backwards compatibility: snapshots
+    // Backwards-compatible snapshots (server may still emit)
     socket.on("intenciones_de_venta", (payload) => {
       const arr = normalizePayload(payload);
       if (!arr) return;
@@ -211,9 +217,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
       setLoadingHistorial(false);
     });
 
-    socket.on("connect_error", (err) => {
-      console.error("socket connect_error:", err);
-    });
+    socket.on("connect_error", (err) => console.error("socket connect_error:", err));
 
     return () => {
       try { socket.disconnect(); } catch (_) {}
@@ -222,7 +226,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // util para detectar si una fila corresponde al jugador actual
+  // util para detectar si una fila corresponde al jugador actual (historial)
   const filaCorrespondeAComprador = (fila) => {
     if (!fila || Object.keys(fila).length === 0) return false;
     const jugadorNorm = jugadorActual.toString().toLowerCase().trim();
@@ -271,6 +275,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
     setEnviando(true);
     setError("");
     try {
+      // comprobar disponibilidad actual
       const resIntent = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
       const dataIntent = await resIntent.json();
       const filaIntent = (dataIntent.filas || []).find(
@@ -300,21 +305,47 @@ export default function ComprarAcciones({ usuario, nombre }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
+
       if (!res.ok) {
-        setError("Error al registrar la compra.");
+        const errData = await res.json().catch(() => ({}));
+        setError(errData.error || "Error al registrar la compra.");
       } else {
         setModalOpen(false);
-        // el servidor emitirá incrementales; si tarda, hacemos fetch inmediato como fallback
+        // el servidor emite incrementales (historial:create e intencion:update). 
+        // Si por alguna razón tarda, los fetchs de fallback mantendrán sincronía.
         fetchIntenciones();
         fetchHistorialLimpio();
       }
     } catch (err) {
+      console.error("Error en handleEnviarCompra:", err);
       setError("No se pudo conectar con el servidor.");
+    } finally {
+      setEnviando(false);
     }
-    setEnviando(false);
   };
 
-  // JSX (UI igual a la que ya tenías)
+  // columnas para historial mostrado en esta vista
+  const columnasMostrar = [
+    { key: "accion", label: "Acción" },
+    { key: "cantidad", label: "Cantidad" },
+    { key: "precio", label: "Precio" },
+    { key: "hora", label: "Hora" },
+    { key: "efectivo", label: "Efectivo" }
+  ];
+
+  const NUM_FILAS_HISTORIAL = 9;
+  const filasHistorialMostrar =
+    misComprasHistorial.length < NUM_FILAS_HISTORIAL
+      ? [...misComprasHistorial, ...Array(NUM_FILAS_HISTORIAL - misComprasHistorial.length).fill({})]
+      : misComprasHistorial;
+
+  // estilos básicos (mantén consistencia con tu proyecto)
+  const tableStyle = { width: "100%", borderCollapse: "collapse", marginTop: "24px" };
+  const thTdStyle = { border: "1px solid #ddd", padding: "8px", textAlign: "center" };
+  const thStyle = { ...thTdStyle, background: "#f4f4f4", fontWeight: "bold" };
+  const modalStyle = { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "rgba(0,0,0,0.22)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 999 };
+  const cardStyle = { background: "#fff", padding: "2em", borderRadius: "10px", minWidth: "320px", boxShadow: "0 2px 12px rgba(0,0,0,0.15)", position: "relative" };
+
   return (
     <div>
       <h2>Intenciones de venta de otros jugadores</h2>
@@ -328,23 +359,25 @@ export default function ComprarAcciones({ usuario, nombre }) {
       ) : intencionesFiltradas.length === 0 ? (
         <div style={{ color: "#888", fontSize: "18px", margin: "16px 0" }}>No hay intenciones de venta disponibles.</div>
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "24px" }}>
+        <table style={tableStyle}>
           <thead>
             <tr>
-              <th style={{ border: "1px solid #ddd", padding: 8, textAlign: "center", background: "#f4f4f4", fontWeight: "bold" }}>Acción</th>
-              <th style={{ border: "1px solid #ddd", padding: 8, textAlign: "center", background: "#f4f4f4", fontWeight: "bold" }}>Cantidad</th>
-              <th style={{ border: "1px solid #ddd", padding: 8, textAlign: "center", background: "#f4f4f4", fontWeight: "bold" }}>Precio</th>
-              <th style={{ border: "1px solid #ddd", padding: 8, textAlign: "center", background: "#f4f4f4", fontWeight: "bold" }}>Ejecución</th>
+              <th style={thStyle}>Acción</th>
+              <th style={thStyle}>Cantidad</th>
+              <th style={thStyle}>Precio</th>
+              <th style={thStyle}>Ejecución</th>
             </tr>
           </thead>
           <tbody>
             {intencionesFiltradas.map(fila => (
               <tr key={fila.id}>
-                <td style={{ border: "1px solid #ddd", padding: 8, textAlign: "center" }}>{fila.accion}</td>
-                <td style={{ border: "1px solid #ddd", padding: 8, textAlign: "center" }}>{fila.cantidad}</td>
-                <td style={{ border: "1px solid #ddd", padding: 8, textAlign: "center" }}>{fila.precio}</td>
-                <td style={{ border: "1px solid #ddd", padding: 8, textAlign: "center" }}>
-                  <button onClick={() => handleComprar(fila)} style={{ fontSize: 16, padding: "2px 12px", background: "#388E3C", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>Comprar</button>
+                <td style={thTdStyle}>{fila.accion}</td>
+                <td style={thTdStyle}>{fila.cantidad}</td>
+                <td style={thTdStyle}>{fila.precio}</td>
+                <td style={thTdStyle}>
+                  <button onClick={() => handleComprar(fila)} style={{ fontSize: 16, padding: "2px 12px", background: "#388E3C", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer" }}>
+                    Comprar
+                  </button>
                 </td>
               </tr>
             ))}
@@ -354,8 +387,8 @@ export default function ComprarAcciones({ usuario, nombre }) {
 
       {/* Modal de compra */}
       {modalOpen && (
-        <div style={{ position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "rgba(0,0,0,0.22)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 999 }}>
-          <div style={{ background: "#fff", padding: "2em", borderRadius: "10px", minWidth: "320px", boxShadow: "0 2px 12px rgba(0,0,0,0.15)", position: "relative" }}>
+        <div style={modalStyle}>
+          <div style={cardStyle}>
             <button onClick={() => setModalOpen(false)} style={{ position: "absolute", top: 8, right: 8, fontSize: "1.2em", background: "none", border: "none", cursor: "pointer" }} aria-label="Cerrar">✖</button>
             <div style={{ marginBottom: "14px", fontSize: "17px" }}>Ingrese la cantidad que desea comprar</div>
             <input type="text" placeholder="Cantidad" value={cantidadComprar} onChange={e => setCantidadComprar(e.target.value)} style={{ width: "100%", fontSize: "18px", padding: "8px", marginBottom: "12px", border: "1px solid #bbb", borderRadius: "4px" }} />
@@ -377,21 +410,17 @@ export default function ComprarAcciones({ usuario, nombre }) {
           <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "24px" }}>
             <thead>
               <tr>
-                <th style={{ border: "1px solid #ddd", padding: 8, textAlign: "center", background: "#f4f4f4", fontWeight: "bold" }}>Acción</th>
-                <th style={{ border: "1px solid #ddd", padding: 8, textAlign: "center", background: "#f4f4f4", fontWeight: "bold" }}>Cantidad</th>
-                <th style={{ border: "1px solid #ddd", padding: 8, textAlign: "center", background: "#f4f4f4", fontWeight: "bold" }}>Precio</th>
-                <th style={{ border: "1px solid #ddd", padding: 8, textAlign: "center", background: "#f4f4f4", fontWeight: "bold" }}>Hora</th>
-                <th style={{ border: "1px solid #ddd", padding: 8, textAlign: "center", background: "#f4f4f4", fontWeight: "bold" }}>Efectivo</th>
+                {columnasMostrar.map(col => <th key={col.key} style={thStyle}>{col.label}</th>)}
               </tr>
             </thead>
             <tbody>
-              {misComprasHistorial.map((fila, idx) => (
+              {filasHistorialMostrar.map((fila, idx) => (
                 <tr key={idx}>
-                  <td style={{ border: "1px solid #ddd", padding: 8, textAlign: "center" }}>{fila.accion || ""}</td>
-                  <td style={{ border: "1px solid #ddd", padding: 8, textAlign: "center" }}>{fila.cantidad || ""}</td>
-                  <td style={{ border: "1px solid #ddd", padding: 8, textAlign: "center" }}>{fila.precio || ""}</td>
-                  <td style={{ border: "1px solid #ddd", padding: 8, textAlign: "center" }}>{fila.hora ? new Date(fila.hora).toLocaleString() : ""}</td>
-                  <td style={{ border: "1px solid #ddd", padding: 8, textAlign: "center" }}>{fila.efectivo || ""}</td>
+                  {columnasMostrar.map(col => (
+                    <td key={col.key} style={thTdStyle}>
+                      {fila && fila[col.key] ? (col.key === "hora" ? new Date(fila.hora).toLocaleString() : fila[col.key]) : ""}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
