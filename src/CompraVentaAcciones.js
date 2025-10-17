@@ -40,7 +40,7 @@ function mergeIntenciones(currentArr = [], incomingArr = []) {
   return Array.from(map.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
 }
 
-/* ---------- Component v40 (repaired filtering) ---------- */
+/* ---------- Component v97 (vendedor filter) ---------- */
 export default function CompraVentaAcciones({ usuario, nombre }) {
   // Form states
   const [accion, setAccion] = useState("");
@@ -314,7 +314,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ---------- Historial vendedor helpers (FIXED) ---------- */
+  /* ---------- Historial vendedor helpers (vendedor field) ---------- */
   // Normaliza un valor de nombre y comprueba igualdad con el jugador actual
   function normalizeNameForCompare(v) {
     if (!v || typeof v !== "string") return null;
@@ -336,44 +336,27 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     return false;
   }
 
-  // Comprueba campos específicos (vendedor/Vendedor/etc.) sin falsos positivos por números sueltos.
-  function filaCorrespondeAVendedor(fila) {
-    if (!fila || typeof fila !== "object") return false;
-    const candidateFields = ["vendedor", "Vendedor", "seller", "Seller", "ofertante", "Ofertante"];
-    for (const key of candidateFields) {
-      if (fila[key] && matchesJugadorExact(String(fila[key]))) return true;
-    }
-    // fallback: check any string field for the exact player token (but not raw numbers)
-    for (const value of Object.values(fila)) {
-      if (typeof value === "string" && matchesJugadorExact(value)) return true;
-    }
-    return false;
-  }
-
   /**
    * NEW RULE: The "Historial de mis venta de acciones" MUST show only rows where the
-   * column "Ofertante" (if present) equals the current player.
+   * explicit column "vendedor" or "Vendedor" equals the current player.
    *
-   * IMPORTANT: per your request, we now REQUIRE an explicit "Ofertante"/"ofertante"
-   * column match. If the row does not contain an explicit Ofertante field it will
-   * NOT be shown in the "mis ventas" table.
+   * If the row lacks that explicit field it will NOT be shown.
    */
   function filaEsVentaDelJugador(fila) {
     if (!fila || typeof fila !== "object") return false;
 
-    // ONLY show rows that have an explicit Ofertante/ofertante column matching the player
-    if (Object.prototype.hasOwnProperty.call(fila, "Ofertante") || Object.prototype.hasOwnProperty.call(fila, "ofertante")) {
-      const ofertanteVal = (fila.Ofertante ?? fila.ofertante);
-      return ofertanteVal ? matchesJugadorExact(String(ofertanteVal)) : false;
+    if (Object.prototype.hasOwnProperty.call(fila, "vendedor") || Object.prototype.hasOwnProperty.call(fila, "Vendedor")) {
+      const vendVal = (fila.vendedor ?? fila.Vendedor);
+      return vendVal ? matchesJugadorExact(String(vendVal)) : false;
     }
 
-    // If there's no explicit Ofertante column, do NOT include the row.
+    // No explicit vendedor column -> do not include the row
     return false;
   }
 
   const misVentasHistorial = historialLimpio.filter(filaEsVentaDelJugador);
 
-  /* ---------- Render ---------- */
+  /* ---------- UI helpers ---------- */
   const columnasMostrar = [
     { key: "accion", label: "Acción" },
     { key: "cantidad", label: "Cantidad" },
