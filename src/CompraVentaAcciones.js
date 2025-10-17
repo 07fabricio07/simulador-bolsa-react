@@ -4,34 +4,33 @@ import { io } from "socket.io-client";
 const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
 const ACCIONES = ["INTC", "MSFT", "AAPL", "IPET", "IBM"];
 
-// Helpers para normalizar y detectar payloads "vacíos"
+/* ---------- Helpers ---------- */
 function normalizePayload(datos) {
   if (!datos) return [];
   if (Array.isArray(datos)) return datos;
   if (datos.filas && Array.isArray(datos.filas)) return datos.filas;
-  return datos;
+  if (datos.data && Array.isArray(datos.data)) return datos.data;
+  if (datos && datos.fila) return Array.isArray(datos.fila) ? datos.fila : [datos.fila];
+  if (datos && datos.id != null) return [datos];
+  return [];
 }
+
 function isAllEmptyObjects(arr) {
   if (!Array.isArray(arr)) return false;
-  return arr.length > 0 && arr.every(item => {
+  if (arr.length === 0) return false;
+  return arr.every(item => {
     if (!item || typeof item !== "object") return false;
     return Object.keys(item).length === 0;
   });
 }
 
-// Merge inteligente: si incoming es grande (>= current.length) tratamos como snapshot y reemplazamos,
-// si incoming es parcial (más pequeño) actualizamos sólo los ids presentes.
 function mergeIntenciones(currentArr, incomingArr) {
   if (!Array.isArray(incomingArr) || incomingArr.length === 0) return currentArr.slice();
 
-  // si incoming parece ser un snapshot completo (mismo tamaño o mayor), usamos incoming como fuente de verdad
   if (!Array.isArray(currentArr) || currentArr.length === 0 || incomingArr.length >= currentArr.length) {
-    // ordenar por id si existe
-    const sorted = incomingArr.slice().sort((a, b) => (a.id || 0) - (b.id || 0));
-    return sorted;
+    return incomingArr.slice().sort((a, b) => (a.id || 0) - (b.id || 0));
   }
 
-  // Caso: incoming es parcial -> actualizar solo los ids presentes
   const map = new Map();
   currentArr.forEach(item => {
     if (item && item.id != null) map.set(item.id, { ...item });
@@ -39,17 +38,13 @@ function mergeIntenciones(currentArr, incomingArr) {
   incomingArr.forEach(item => {
     if (item && item.id != null) {
       const existing = map.get(item.id);
-      if (existing) {
-        map.set(item.id, { ...existing, ...item });
-      } else {
-        map.set(item.id, item);
-      }
+      map.set(item.id, existing ? { ...existing, ...item } : item);
     }
   });
-  // devolver array ordenado por id
   return Array.from(map.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
 }
 
+/* ---------- Componente ---------- */
 export default function CompraVentaAcciones({ usuario, nombre }) {
   // Estados para los inputs
   const [accion, setAccion] = useState("");
@@ -228,23 +223,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
 
   const misVentasHistorial = historialLimpio.filter(filaCorrespondeAVendedor);
 
-  // Columnas a mostrar (se quitó "comprador")
-  const columnasMostrar = [
-    { key: "accion", label: "Acción" },
-    { key: "cantidad", label: "Cantidad" },
-    { key: "precio", label: "Precio" },
-    { key: "hora", label: "Hora" },
-    { key: "efectivo", label: "Efectivo" }
-  ];
-
-  // Mejoras: mostrar hasta 9 filas en historial, con scroll y filas vacías si faltan
-  const NUM_FILAS_HISTORIAL = 9;
-  const filasHistorialMostrar =
-    misVentasHistorial.length < NUM_FILAS_HISTORIAL
-      ? [...misVentasHistorial, ...Array(NUM_FILAS_HISTORIAL - misVentasHistorial.length).fill({})]
-      : misVentasHistorial;
-
-  // SOCKET.IO: conectar y actualizar intenciones + historial en tiempo real (ahora con merge inteligente)
+  // SOCKET.IO: conectar y actualizar intenciones + historial en tiempo real (merge inteligente)
   useEffect(() => {
     const socket = io(BACKEND_URL, { transports: ["websocket"] });
     socketRef.current = socket;
@@ -259,10 +238,43 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
       setIsSocketConnected(false);
     });
 
+    // incremental handlers
+    socket.on("intencion:create", (payload) => {
+      const filas = normalizePayload(payload?.fila ? payload.fila : payload);
+      if (!filas || filas.length === 0) return;
+      const merged = mergeIntenciones(intencionesRef.current || [], filas);
+      setIntenciones(merged);
+      intencionesRef.current = merged;
+    });
+
+    socket.on("intencion:update", (payload) => {
+      const filas = normalizePayload(payload?.fila ? payload.fila : payload);
+      if (!filas || filas.length === 0) return;
+      const merged = mergeIntenciones(intencionesRef.current || [], filas);
+      setIntenciones(merged);
+      intencionesRef.current = merged;
+    });
+
+    socket.on("intencion:delete", (payload) => {
+      const id = payload?.id ?? (payload?.fila?.id);
+      if (id == null) return;
+      const next = (intencionesRef.current || []).filter(i => i.id !== id);
+      setIntenciones(next);
+      intencionesRef.current = next;
+    });
+
+    socket.on("historial:create", (payload) => {
+      const fila = payload?.fila ?? payload;
+      if (!fila) return;
+      const next = [fila, ...(historialRef.current || [])];
+      setHistorialLimpio(next);
+      historialRef.current = next;
+    });
+
+    // backwards-compatible snapshot events (if server emits them)
     socket.on("intenciones_de_venta", (payload) => {
       const arr = normalizePayload(payload);
-      console.log("evento intenciones_de_venta (CompraVentaAcciones) recibido:", arr);
-
+      if (!arr) return;
       if (isAllEmptyObjects(arr)) {
         console.log("Ignorado intenciones_de_venta (solo objetos vacíos)");
         return;
@@ -271,8 +283,6 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
         console.log("Ignorado intenciones_de_venta vacío (cliente ya tiene datos).");
         return;
       }
-
-      // Merge inteligente: si incoming es pequeño -> parcial, merge; si incoming >= current -> snapshot
       const merged = mergeIntenciones(intencionesRef.current || [], arr);
       setIntenciones(merged);
       intencionesRef.current = merged;
@@ -280,8 +290,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
 
     socket.on("historial_limpio", (payload) => {
       const arr = normalizePayload(payload);
-      console.log("evento historial_limpio (CompraVentaAcciones) recibido:", arr);
-
+      if (!arr) return;
       if (isAllEmptyObjects(arr)) {
         console.log("Ignorado historial_limpio (solo objetos vacíos)");
         return;
@@ -290,7 +299,6 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
         console.log("Ignorado historial_limpio vacío (cliente ya tiene datos).");
         return;
       }
-
       if (Array.isArray(arr) && arr.length > 0) {
         const sorted = arr.slice().sort((a, b) => {
           const da = a.hora ? new Date(a.hora).getTime() : 0;
@@ -314,6 +322,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
       try { socket.disconnect(); } catch (e) { /* ignore */ }
       socketRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Estilos y render (sin cambios en estructura)

@@ -3,21 +3,17 @@ import { io } from "socket.io-client";
 
 const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
 
-// Normaliza distintas formas de payload que puede emitir el servidor
+/* ---------- Helpers ---------- */
 function normalizePayload(payload) {
   if (!payload) return [];
   if (Array.isArray(payload)) return payload;
-  // payload puede venir como { filas: [...] } o { data: [...] }
   if (payload.filas && Array.isArray(payload.filas)) return payload.filas;
   if (payload.data && Array.isArray(payload.data)) return payload.data;
-  // payload puede ser un objeto único (una fila)
-  if (payload && typeof payload === "object" && payload.id != null) return [payload];
-  // payload tipado { type: 'intencion:update', fila: {...} }
   if (payload && payload.fila) return Array.isArray(payload.fila) ? payload.fila : [payload.fila];
+  if (payload && typeof payload === "object" && payload.id != null) return [payload];
   return [];
 }
 
-// Devuelve true solo si es un array con objetos y todos están vacíos (payload "relleno")
 function isAllEmptyObjects(arr) {
   if (!Array.isArray(arr)) return false;
   if (arr.length === 0) return false;
@@ -27,17 +23,15 @@ function isAllEmptyObjects(arr) {
   });
 }
 
-// Merge inteligente de intenciones: si incoming >= current treat as snapshot (reemplazar).
-// Si incoming es más pequeño se asume parcial y se actualiza por id.
+// Merge inteligente: si incoming >= current -> snapshot (reemplazar).
+// Si incoming es más pequeño -> actualizar solo por id (merge parcial).
 function mergeIntenciones(currentArr = [], incomingArr = []) {
   if (!Array.isArray(incomingArr) || incomingArr.length === 0) return currentArr.slice();
 
   if (!Array.isArray(currentArr) || currentArr.length === 0 || incomingArr.length >= currentArr.length) {
-    // snapshot: ordenar por id para determinismo
     return incomingArr.slice().sort((a, b) => (a.id || 0) - (b.id || 0));
   }
 
-  // parcial: actualizar solo por id
   const map = new Map();
   currentArr.forEach(item => {
     if (item && item.id != null) map.set(item.id, { ...item });
@@ -45,13 +39,13 @@ function mergeIntenciones(currentArr = [], incomingArr = []) {
   incomingArr.forEach(item => {
     if (item && item.id != null) {
       const existing = map.get(item.id);
-      if (existing) map.set(item.id, { ...existing, ...item });
-      else map.set(item.id, item);
+      map.set(item.id, existing ? { ...existing, ...item } : item);
     }
   });
   return Array.from(map.values()).sort((a, b) => (a.id || 0) - (b.id || 0));
 }
 
+/* ---------- Componente ---------- */
 export default function ComprarAcciones({ usuario, nombre }) {
   const [intenciones, setIntenciones] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -125,7 +119,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
     fetchHistorialLimpio();
   }, [fetchIntenciones, fetchHistorialLimpio]);
 
-  // socket.io: conectar y escuchar eventos con tolerancia a payloads vacíos y merge parcial
+  // SOCKET.IO: listeners incrementales + compatibilidad con snapshots
   useEffect(() => {
     const socket = io(BACKEND_URL, { transports: ["websocket"] });
     socketRef.current = socket;
@@ -140,98 +134,68 @@ export default function ComprarAcciones({ usuario, nombre }) {
       setIsSocketConnected(false);
     });
 
-    // Maneja varias formas de notificación:
-    // 1) snapshot array o { filas: [...] }
-    // 2) tipos finos: { type: 'intencion:update', fila: {...} }
-    // 3) single object { id, ... } -> tratado como fila única
+    // Incrementales (recomendados)
+    socket.on("intencion:create", (payload) => {
+      const filas = normalizePayload(payload?.fila ? payload.fila : payload);
+      if (!filas || filas.length === 0) return;
+      const merged = mergeIntenciones(intencionesRef.current || [], filas);
+      setIntenciones(merged);
+      intencionesRef.current = merged;
+    });
+
+    socket.on("intencion:update", (payload) => {
+      const filas = normalizePayload(payload?.fila ? payload.fila : payload);
+      if (!filas || filas.length === 0) return;
+      const merged = mergeIntenciones(intencionesRef.current || [], filas);
+      setIntenciones(merged);
+      intencionesRef.current = merged;
+    });
+
+    socket.on("intencion:delete", (payload) => {
+      const id = payload?.id ?? (payload?.fila?.id);
+      if (id == null) return;
+      const next = (intencionesRef.current || []).filter(i => i.id !== id);
+      setIntenciones(next);
+      intencionesRef.current = next;
+    });
+
+    socket.on("historial:create", (payload) => {
+      const fila = payload?.fila ?? payload;
+      if (!fila) return;
+      const next = [fila, ...(historialRef.current || [])];
+      setHistorialLimpio(next);
+      historialRef.current = next;
+    });
+
+    // Backwards compatibility: snapshots
     socket.on("intenciones_de_venta", (payload) => {
-      // payload puede ser { type, fila } o array o { filas: [...] } o objeto único
-      if (!payload) return;
-      // caso tipado
-      if (payload.type && payload.fila) {
-        const tipo = payload.type;
-        const fila = payload.fila;
-        const curr = intencionesRef.current || [];
-        if (tipo === "intencion:update") {
-          // actualizar por id
-          const merged = mergeIntenciones(curr, [fila]);
-          setIntenciones(merged);
-          intencionesRef.current = merged;
-          return;
-        }
-        if (tipo === "intencion:create") {
-          const merged = mergeIntenciones(curr, [fila]);
-          setIntenciones(merged);
-          intencionesRef.current = merged;
-          return;
-        }
-        if (tipo === "intencion:delete") {
-          const filtered = curr.filter(i => i.id !== fila.id);
-          setIntenciones(filtered);
-          intencionesRef.current = filtered;
-          return;
-        }
-      }
-
-      // payload como objeto con 'id' -> tratar como fila única
-      if (payload && typeof payload === "object" && payload.id != null && !Array.isArray(payload)) {
-        const merged = mergeIntenciones(intencionesRef.current || [], [payload]);
-        setIntenciones(merged);
-        intencionesRef.current = merged;
-        return;
-      }
-
-      // payload como array / filas
       const arr = normalizePayload(payload);
-      console.log("evento intenciones_de_venta recibido:", arr);
-
-      // si son objetos vacíos (relleno) ignorar
+      if (!arr) return;
       if (isAllEmptyObjects(arr)) {
-        console.log("Ignorado intenciones_de_venta: payload contiene solo objetos vacíos");
+        console.log("Ignorado intenciones_de_venta: payload solo objetos vacíos");
         return;
       }
-      // si array vacío pero ya hay datos en cliente -> ignorar para no borrar UI
       if (Array.isArray(arr) && arr.length === 0 && intencionesRef.current && intencionesRef.current.length > 0) {
         console.log("Ignorado intenciones_de_venta vacío (cliente ya tiene datos).");
         return;
       }
-
-      // merge inteligente
       const merged = mergeIntenciones(intencionesRef.current || [], arr);
       setIntenciones(merged);
       intencionesRef.current = merged;
       setLoading(false);
     });
 
-    // historial_limpio debe soportar snapshots y mensajes tipo create
     socket.on("historial_limpio", (payload) => {
-      if (!payload) return;
-
-      if (payload.type && payload.fila) {
-        const tipo = payload.type;
-        const fila = payload.fila;
-        const curr = historialRef.current || [];
-        if (tipo === "historial:create") {
-          const next = [fila, ...curr]; // añadir al inicio
-          setHistorialLimpio(next);
-          historialRef.current = next;
-          return;
-        }
-        // otros tipos (no es común) pueden implementarse aquí
-      }
-
       const arr = normalizePayload(payload);
-      console.log("evento historial_limpio recibido:", arr);
-
+      if (!arr) return;
       if (isAllEmptyObjects(arr)) {
-        console.log("Ignorado historial_limpio: payload contiene solo objetos vacíos");
+        console.log("Ignorado historial_limpio: payload solo objetos vacíos");
         return;
       }
       if (Array.isArray(arr) && arr.length === 0 && historialRef.current && historialRef.current.length > 0) {
         console.log("Ignorado historial_limpio vacío (cliente ya tiene datos).");
         return;
       }
-
       if (Array.isArray(arr) && arr.length > 0) {
         const sorted = arr.slice().sort((a, b) => {
           const da = a.hora ? new Date(a.hora).getTime() : 0;
@@ -256,9 +220,9 @@ export default function ComprarAcciones({ usuario, nombre }) {
       socketRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchIntenciones, fetchHistorialLimpio]);
+  }, []);
 
-  // detección si una fila corresponde al jugador actual (para historial)
+  // util para detectar si una fila corresponde al jugador actual
   const filaCorrespondeAComprador = (fila) => {
     if (!fila || Object.keys(fila).length === 0) return false;
     const jugadorNorm = jugadorActual.toString().toLowerCase().trim();
@@ -282,7 +246,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
     return false;
   };
 
-  // filtro y UI helpers
+  // filtros y UI helpers
   const misComprasHistorial = historialLimpio.filter(filaCorrespondeAComprador);
 
   const intencionesFiltradas = intenciones.filter(
@@ -340,7 +304,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
         setError("Error al registrar la compra.");
       } else {
         setModalOpen(false);
-        // si el servidor emite, el socket actualizará; si tarda, hacemos un fetch inmediato
+        // el servidor emitirá incrementales; si tarda, hacemos fetch inmediato como fallback
         fetchIntenciones();
         fetchHistorialLimpio();
       }
@@ -350,10 +314,7 @@ export default function ComprarAcciones({ usuario, nombre }) {
     setEnviando(false);
   };
 
-  // JSX: tu UI habitual (tabla de intenciones, modal y historial)
-  // Aquí dejo la UI completa equivalente a la que ya tenías, sin cambios funcionales,
-  // sólo enlazada a la lógica de datos corregida arriba.
-
+  // JSX (UI igual a la que ya tenías)
   return (
     <div>
       <h2>Intenciones de venta de otros jugadores</h2>
