@@ -1,7 +1,23 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { io } from "socket.io-client";
 
 const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
 const ACCIONES = ["INTC", "MSFT", "AAPL", "IPET", "IBM"];
+
+// Helpers para normalizar y detectar payloads "vacíos"
+function normalizePayload(datos) {
+  if (!datos) return [];
+  if (Array.isArray(datos)) return datos;
+  if (datos.filas && Array.isArray(datos.filas)) return datos.filas;
+  return datos;
+}
+function isAllEmptyObjects(arr) {
+  if (!Array.isArray(arr)) return false;
+  return arr.length > 0 && arr.every(item => {
+    if (!item || typeof item !== "object") return false;
+    return Object.keys(item).length === 0;
+  });
+}
 
 export default function CompraVentaAcciones({ usuario, nombre }) {
   // Estados para los inputs
@@ -20,46 +36,58 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
   const [historialLimpio, setHistorialLimpio] = useState([]);
   const [loadingHistorial, setLoadingHistorial] = useState(true);
 
+  // indicador de socket
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
+  const socketRef = useRef(null);
+
+  // Refs para evitar sobrescrituras por emisiones "vacías"
+  const intencionesRef = useRef([]);
+  const historialRef = useRef([]);
+
   // Extrae el número del usuario y arma el formato "Jugador N"
   const jugadorNumero = usuario.match(/\d+/)?.[0];
   const jugador = jugadorNumero ? `Jugador ${jugadorNumero}` : "Jugador";
 
-  // Consulta las intenciones de venta al montar el componente o tras enviar/anular
-  const fetchIntenciones = async () => {
+  // Consulta las intenciones de venta (fetch inicial y fallback)
+  const fetchIntenciones = useCallback(async () => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
       const data = await res.json();
-      setIntenciones(data.filas || []);
+      const arr = normalizePayload(data);
+      setIntenciones(arr);
+      intencionesRef.current = arr;
     } catch (err) {
       setError("No se pudo consultar intenciones de venta.");
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchIntenciones();
+  }, [fetchIntenciones]);
+
+  // Consulta historial limpio al montar y cada vez que cambie (fetch inicial / fallback)
+  const fetchHistorialLimpio = useCallback(async () => {
+    try {
+      setLoadingHistorial(true);
+      const res = await fetch(`${BACKEND_URL}/api/historial-limpio`);
+      const data = await res.json();
+      const arr = normalizePayload(data);
+      setHistorialLimpio(arr);
+      historialRef.current = arr;
+    } catch (err) {
+      setHistorialLimpio([]);
+    } finally {
+      setLoadingHistorial(false);
+    }
   }, []);
 
-  // Consulta historial limpio al montar y cada vez que cambia
   useEffect(() => {
-    const fetchHistorialLimpio = async () => {
-      try {
-        setLoadingHistorial(true);
-        const res = await fetch(`${BACKEND_URL}/api/historial-limpio`);
-        const data = await res.json();
-        setHistorialLimpio(data.filas || []);
-      } catch (err) {
-        setHistorialLimpio([]);
-      } finally {
-        setLoadingHistorial(false);
-      }
-    };
     fetchHistorialLimpio();
-  }, []);
+  }, [fetchHistorialLimpio]);
 
   // Validación de inputs
   const cantidadValida = /^\d+$/.test(cantidad) && Number(cantidad) > 0;
   const precioValido = (() => {
-    // Debe ser positivo, número, máximo 2 decimales
     if (!/^\d+(\.\d{1,2})?$/.test(precio)) return false;
     return Number(precio) > 0;
   })();
@@ -89,7 +117,8 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
       setCantidad("");
       setPrecio("");
       setAccion("");
-      fetchIntenciones();
+      // refresco inmediato; servidor emitirá también por socket
+      await fetchIntenciones();
     } catch (err) {
       setError("No se pudo conectar con el servidor.");
     }
@@ -97,7 +126,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
 
   // FILTRO: solo muestra las intenciones del jugador actual Y cantidad > 0
   const misIntenciones = intenciones.filter(
-    fila => fila.jugador === jugador && fila.cantidad > 0
+    fila => fila && fila.jugador === jugador && fila.cantidad > 0
   );
 
   // Anular intención de venta (poner cantidad en 0)
@@ -116,7 +145,8 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
         setAnulandoId(null);
         return;
       }
-      fetchIntenciones();
+      // refresco inmediato; servidor emitirá también por socket
+      await fetchIntenciones();
     } catch (err) {
       setError("No se pudo conectar con el servidor.");
     }
@@ -128,7 +158,6 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     setAnulandoTodas(true);
     setError("");
     try {
-      // Ejecuta la lógica de handleAnular en todas las filas
       for (const fila of misIntenciones) {
         await fetch(`${BACKEND_URL}/api/intenciones-de-venta/${fila.id}`, {
           method: "PUT",
@@ -145,9 +174,29 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
   };
 
   // FILTRO: historial limpio para mis ventas (donde ofertante = jugador actual)
-  const misVentasHistorial = historialLimpio.filter(
-    fila => fila.vendedor === jugador
-  );
+  // Usamos una comparación tolerante similar a la que usamos en comprar
+  const filaCorrespondeAVendedor = (fila) => {
+    if (!fila || Object.keys(fila).length === 0) return false;
+    const jugadorNorm = jugador.toString().toLowerCase().trim();
+    const jugadorNormNoSpace = jugadorNorm.replace(/\s+/g, "");
+    const num = jugadorNumero ? jugadorNumero.toString() : "";
+
+    const candidates = [];
+    if (fila.vendedor) candidates.push(String(fila.vendedor));
+    if (fila.Vendedor) candidates.push(String(fila.Vendedor));
+    try {
+      const other = Object.values(fila).filter(v => v !== null && v !== undefined).join(" ");
+      candidates.push(other);
+    } catch (_) {}
+
+    const joined = candidates.join(" ").toLowerCase();
+    if (joined.includes(jugadorNorm)) return true;
+    if (joined.includes(jugadorNormNoSpace)) return true;
+    if (num && joined.includes(num)) return true;
+    return false;
+  };
+
+  const misVentasHistorial = historialLimpio.filter(filaCorrespondeAVendedor);
 
   // Columnas a mostrar (se quitó "comprador")
   const columnasMostrar = [
@@ -156,7 +205,6 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     { key: "precio", label: "Precio" },
     { key: "hora", label: "Hora" },
     { key: "efectivo", label: "Efectivo" }
-    // Ocultas: id, momento, estado, comprador
   ];
 
   // Estilos para la tabla
@@ -184,6 +232,80 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
     misVentasHistorial.length < NUM_FILAS_HISTORIAL
       ? [...misVentasHistorial, ...Array(NUM_FILAS_HISTORIAL - misVentasHistorial.length).fill({})]
       : misVentasHistorial;
+
+  // SOCKET.IO: conectar y actualizar intenciones + historial en tiempo real
+  useEffect(() => {
+    const socket = io(BACKEND_URL, { transports: ["websocket"] });
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("socket.io conectado (CompraVentaAcciones)", socket.id);
+      setIsSocketConnected(true);
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.warn("socket.io desconectado (CompraVentaAcciones):", reason);
+      setIsSocketConnected(false);
+    });
+
+    socket.on("intenciones_de_venta", (payload) => {
+      const arr = normalizePayload(payload);
+      console.log("evento intenciones_de_venta (CompraVentaAcciones) recibido:", arr);
+
+      // Ignorar payloads compuestos sólo por objetos vacíos
+      if (isAllEmptyObjects(arr)) {
+        console.log("Ignorado intenciones_de_venta (solo objetos vacíos)");
+        return;
+      }
+      // Si servidor envía array vacío pero cliente ya tiene datos, ignorar para no borrar UI
+      if (Array.isArray(arr) && arr.length === 0 && intencionesRef.current && intencionesRef.current.length > 0) {
+        console.log("Ignorado intenciones_de_venta vacío (cliente ya tiene datos).");
+        return;
+      }
+
+      setIntenciones(arr);
+      intencionesRef.current = arr;
+    });
+
+    socket.on("historial_limpio", (payload) => {
+      const arr = normalizePayload(payload);
+      console.log("evento historial_limpio (CompraVentaAcciones) recibido:", arr);
+
+      if (isAllEmptyObjects(arr)) {
+        console.log("Ignorado historial_limpio (solo objetos vacíos)");
+        return;
+      }
+      if (Array.isArray(arr) && arr.length === 0 && historialRef.current && historialRef.current.length > 0) {
+        console.log("Ignorado historial_limpio vacío (cliente ya tiene datos).");
+        return;
+      }
+
+      // Si llegan datos, ordeno por hora descendente y actualizo
+      if (Array.isArray(arr) && arr.length > 0) {
+        const sorted = arr.slice().sort((a, b) => {
+          const da = a.hora ? new Date(a.hora).getTime() : 0;
+          const db = b.hora ? new Date(b.hora).getTime() : 0;
+          return db - da;
+        });
+        setHistorialLimpio(sorted);
+        historialRef.current = sorted;
+      } else {
+        setHistorialLimpio(arr);
+        historialRef.current = arr;
+      }
+      setLoadingHistorial(false);
+    });
+
+    socket.on("connect_error", (err) => {
+      console.error("socket connect_error (CompraVentaAcciones):", err);
+    });
+
+    return () => {
+      try { socket.disconnect(); } catch (e) { /* ignore */ }
+      socketRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div style={{ maxWidth: 700, margin: "auto" }}>
@@ -239,7 +361,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
           Enviar
         </button>
       </div>
-      {/* Mensaje de error si precio tiene más de 2 decimales */}
+
       <div style={{ color: "#d32f2f", minHeight: 20 }}>
         {precio && !precioValido && "El precio debe ser positivo, con máximo 2 decimales."}
       </div>
@@ -248,6 +370,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
           {error}
         </div>
       )}
+
       <h3>Mis intenciones de venta registradas:</h3>
       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
         {misIntenciones.length !== 0 && (
@@ -268,7 +391,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
           </button>
         )}
       </div>
-      {/* Modal de confirmación para "Anular todas" */}
+
       {modalAnularTodas && (
         <div
           style={{
@@ -326,6 +449,7 @@ export default function CompraVentaAcciones({ usuario, nombre }) {
           </div>
         </div>
       )}
+
       {misIntenciones.length === 0 ? (
         <div style={{color: "#888", fontSize: "18px", margin: "16px 0"}}>No tienes intenciones de venta activas</div>
       ) : (
