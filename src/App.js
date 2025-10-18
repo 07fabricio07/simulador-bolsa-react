@@ -15,6 +15,9 @@ import RevisarPortafolioJugadores from "./RevisarPortafolioJugadores";
 import RegistrarTransacciones from "./RegistrarTransacciones";
 import TransaccionesRegistradas from "./TransaccionesRegistradas";
 
+// Nuevo componente Ranking
+import Ranking from "./Ranking";
+
 function Tab({ label, active, onClick }) {
   return (
     <button
@@ -141,6 +144,7 @@ function App() {
     { label: "Información", content: <Informacion {...informacionProps} /> },
     { label: "Portafolio inicial", content: <PortafolioInicial /> },
     { label: "Portafolio de Jugadores", content: <PortafolioJugadores /> },
+    { label: "Ranking", content: <Ranking /> } // <-- nueva pestaña para admin
   ];
 
   // NUEVAS PESTAÑAS PARA REGISTRADOR
@@ -198,7 +202,7 @@ function App() {
       </div>
       <p style={{ fontSize: "18px" }}>
         Usuario activo: <b>{usuarioActual.nombre} ({usuarioActual.usuario})</b> &nbsp; | Rol: <b>{usuarioActual.rol}</b>
-        &nbsp; 
+        &nbsp;
         <button onClick={handleLogout} style={{ marginLeft: "1em", padding: "0.3em 0.6em", cursor: "pointer" }}>
           Cerrar sesión
         </button>
