@@ -3,7 +3,8 @@ import React, { useState } from "react";
 const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
 
 const ACCIONES = ["MRK", "WMT", "KO"];
-const JUGADORES = Array.from({ length: 12 }, (_, i) => `Jugador ${i + 1}`);
+// Extendido a 14 jugadores (ahora incluye Jugador 13 y Jugador 14)
+const JUGADORES = Array.from({ length: 14 }, (_, i) => `Jugador ${i + 1}`);
 
 export default function RegistrarTransacciones() {
   const [form, setForm] = useState({
@@ -14,6 +15,8 @@ export default function RegistrarTransacciones() {
     vendedor: ""
   });
   const [msg, setMsg] = useState("");
+  const [msgType, setMsgType] = useState(null); // 'success' | 'error' | null
+  const [submitting, setSubmitting] = useState(false);
 
   // Validaciones
   const cantidadValida =
@@ -33,19 +36,39 @@ export default function RegistrarTransacciones() {
     precioValido &&
     accionValida &&
     compradorValido &&
-    vendedorValido;
+    vendedorValido &&
+    !submitting;
 
   const handleChange = (e) => {
+    const { name, value } = e.target;
     setForm(f => ({
       ...f,
-      [e.target.name]: e.target.value
+      [name]: value
     }));
+    // limpiar mensajes al cambiar campos para mejor UX
+    if (msg) {
+      setMsg("");
+      setMsgType(null);
+    }
+  };
+
+  const resetForm = () => {
+    setForm({
+      accion: "",
+      cantidad: "",
+      precio: "",
+      comprador: "",
+      vendedor: ""
+    });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMsg("");
+    setMsgType(null);
     if (!puedeRegistrar) return;
+    setSubmitting(true);
+
     try {
       const res = await fetch(`${BACKEND_URL}/api/registros-registrador`, {
         method: "POST",
@@ -56,23 +79,60 @@ export default function RegistrarTransacciones() {
           precio: Number(form.precio)
         })
       });
-      const data = await res.json();
-      if (res.ok) {
+
+      // leer body con tolerancia: primero texto y luego intentar parsear JSON
+      const text = await res.text();
+      let data = null;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch {
+        data = { text };
+      }
+
+      // Determinar si la operación creó un documento (varios formatos posibles):
+      const createdId = data && (data._id || data.id || data.insertedId || data.inserted_id);
+      const okFlag = res.ok || (data && data.ok === true) || !!createdId;
+
+      if (okFlag) {
+        // Éxito (incluso si el servidor devolvió un status no-2xx pero incluyó id/ok)
         setMsg("Transacción registrada correctamente.");
-        setForm({
-          accion: "",
-          cantidad: "",
-          precio: "",
-          comprador: "",
-          vendedor: ""
-        });
+        setMsgType("success");
+        resetForm();
       } else {
-        setMsg(data.error || "Error al registrar.");
+        // Si el servidor devolvió texto útil en data.text o data.error lo mostramos
+        const errMsg =
+          (data && (data.error || data.message || data.text)) ||
+          `Error al registrar la transacción (status ${res.status}).`;
+        setMsg(errMsg);
+        setMsgType("error");
+
+        // Si por alguna razón el servidor devolvió id en body pero no fue res.ok,
+        // igualmente consideramos éxito en cuanto a limpiar el formulario (fallback)
+        if (createdId) {
+          console.warn("Servidor devolvió id pero status no-2xx; limpiando formulario por consistencia.");
+          setForm({
+            accion: "",
+            cantidad: "",
+            precio: "",
+            comprador: "",
+            vendedor: ""
+          });
+          // mantener msg de aviso/error pero prefijarlo
+          setMsg("Transacción registrada (respuesta del servidor irregular).");
+          setMsgType("success");
+        }
       }
     } catch (err) {
+      console.error("Error de red registrando transacción:", err);
       setMsg("Error de red al registrar.");
+      setMsgType("error");
+    } finally {
+      setSubmitting(false);
     }
   };
+
+  const successColor = "#388E3C";
+  const errorColor = "#d32f2f";
 
   return (
     <div>
@@ -118,7 +178,7 @@ export default function RegistrarTransacciones() {
             {JUGADORES.map(j => <option key={j} value={j}>{j}</option>)}
           </select>
         </div>
-        {/* Mensaje de error si hay campos inválidos */}
+        {/* Mensaje de validación */}
         <div style={{ color: "#d32f2f", marginTop: 7 }}>
           {!cantidadValida && form.cantidad && "La cantidad debe ser un número entero positivo."}
           {!precioValido && form.precio && "El precio debe ser un número positivo con máximo 2 decimales."}
@@ -133,14 +193,19 @@ export default function RegistrarTransacciones() {
             padding: "8px 24px",
             borderRadius: 4,
             fontSize: 16,
-            cursor: puedeRegistrar ? "pointer" : "not-allowed"
+            cursor: puedeRegistrar ? "pointer" : "not-allowed",
+            opacity: submitting ? 0.9 : 1
           }}
           disabled={!puedeRegistrar}
         >
-          Registrar
+          {submitting ? "Registrando..." : "Registrar"}
         </button>
       </form>
-      {msg && <div style={{marginTop:10, color:"#388E3C"}}>{msg}</div>}
+      {msg && (
+        <div style={{marginTop:10, color: msgType === "success" ? successColor : errorColor}}>
+          {msg}
+        </div>
+      )}
     </div>
   );
 }
