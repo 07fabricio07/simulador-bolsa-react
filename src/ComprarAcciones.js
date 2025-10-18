@@ -343,19 +343,63 @@ export default function ComprarAcciones({ usuario, nombre }) {
             {error && <div style={{ color: "#d32f2f", marginBottom: "12px" }}>{error}</div>}
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <button onClick={async () => {
-                // re-use existing handler logic
+                // re-use existing handler logic, extended to check buyer's efectivo
                 if (!(/^\d+$/.test(cantidadComprar) && Number(cantidadComprar) > 0)) return;
                 await (async function () {
                   setEnviando(true);
                   try {
+                    // 1) Re-check intención actual
                     const resIntent = await fetch(`${BACKEND_URL}/api/intenciones-de-venta`);
                     const dataIntent = await resIntent.json();
                     const filaIntent = (dataIntent.filas || []).find(f => f.id === filaSeleccionada.id);
                     const cantidadDisponible = filaIntent ? filaIntent.cantidad : 0;
                     const cantidadInt = Number(cantidadComprar);
-                    let estado = "desaprobada";
-                    if (cantidadDisponible >= cantidadInt) estado = "aprobada";
                     const efectivo = cantidadInt * filaSeleccionada.precio;
+
+                    // 2) Obtener el efectivo actual del comprador desde PortafolioJugadores
+                    let efectivoComprador = 0;
+                    try {
+                      const resPort = await fetch(`${BACKEND_URL}/api/portafolio-jugadores`);
+                      if (resPort.ok) {
+                        const portData = await resPort.json();
+                        const filasPort = portData?.filas || [];
+                        const filaComprador = filasPort.find(r => {
+                          if (!r || !r.jugador) return false;
+                          return String(r.jugador).toLowerCase().replace(/\s+/g, " ").trim() === jugadorActual.toLowerCase().trim();
+                        });
+                        if (filaComprador) {
+                          efectivoComprador = Number(filaComprador.Efectivo ?? filaComprador.efectivo ?? 0);
+                        } else {
+                          efectivoComprador = 0;
+                        }
+                      } else {
+                        console.warn("No se pudo obtener PortafolioJugadores (res.ok=false)");
+                        efectivoComprador = 0;
+                      }
+                    } catch (err) {
+                      console.warn("Error obteniendo PortafolioJugadores:", err);
+                      efectivoComprador = 0;
+                    }
+
+                    // 3) Decidir estado: requiere BOTH condiciones (cantidad disponible y efectivo suficiente)
+                    let estado = "desaprobada";
+                    if (cantidadDisponible >= cantidadInt && efectivoComprador >= efectivo) {
+                      estado = "aprobada";
+                      setError("");
+                    } else {
+                      // Informar por qué está desaprobada en la UI (no bloqueamos el envío)
+                      if (cantidadDisponible < cantidadInt && efectivoComprador < efectivo) {
+                        setError("Cantidad insuficiente y efectivo insuficiente — se registrará como 'desaprobada'.");
+                      } else if (cantidadDisponible < cantidadInt) {
+                        setError("Cantidad disponible insuficiente — se registrará como 'desaprobada'.");
+                      } else if (efectivoComprador < efectivo) {
+                        setError("No tienes suficiente efectivo — se registrará como 'desaprobada'.");
+                      } else {
+                        setError("La compra será registrada como 'desaprobada'.");
+                      }
+                    }
+
+                    // 4) Armar body y enviar (mismo comportamiento: enviamos aunque sea desaprobada)
                     const body = {
                       id: filaSeleccionada.id,
                       accion: filaSeleccionada.accion,
@@ -368,11 +412,13 @@ export default function ComprarAcciones({ usuario, nombre }) {
                       efectivo,
                       estado
                     };
+
                     const res = await fetch(`${BACKEND_URL}/api/historial`, {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify(body)
                     });
+
                     if (!res.ok) {
                       const errData = await res.json().catch(() => ({}));
                       setError(errData.error || "Error al registrar la compra.");
@@ -380,6 +426,8 @@ export default function ComprarAcciones({ usuario, nombre }) {
                       setModalOpen(false);
                       await fetchIntenciones();
                       await fetchHistorialLimpio();
+                      // limpiar mensaje de error al confirmar éxito
+                      setError("");
                     }
                   } catch (err) {
                     console.error("Error en compra:", err);
