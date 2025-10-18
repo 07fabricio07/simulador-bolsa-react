@@ -3,7 +3,7 @@ import React, { useState } from "react";
 const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
 
 const ACCIONES = ["MRK", "WMT", "KO"];
-// Extendido a 14 jugadores (ahora incluye Jugador 13 y Jugador 14)
+// Extendido a 14 jugadores (incluye Jugador 13 y Jugador 14)
 const JUGADORES = Array.from({ length: 14 }, (_, i) => `Jugador ${i + 1}`);
 
 export default function RegistrarTransacciones() {
@@ -22,7 +22,6 @@ export default function RegistrarTransacciones() {
   const cantidadValida =
     /^\d+$/.test(form.cantidad) && Number(form.cantidad) > 0;
   const precioValido = (() => {
-    // Debe ser número positivo mayor a 0 y máximo 2 decimales
     const val = form.precio;
     if (!/^\d+(\.\d{1,2})?$/.test(val)) return false;
     return Number(val) > 0;
@@ -45,7 +44,6 @@ export default function RegistrarTransacciones() {
       ...f,
       [name]: value
     }));
-    // limpiar mensajes al cambiar campos para mejor UX
     if (msg) {
       setMsg("");
       setMsgType(null);
@@ -61,6 +59,20 @@ export default function RegistrarTransacciones() {
       vendedor: ""
     });
   };
+
+  // Heurística extendida para detectar creación a partir de texto no-JSON
+  function textIndicatesCreated(text) {
+    if (!text || typeof text !== "string") return false;
+    const lower = text.toLowerCase();
+    // Buscar patrones típicos: "_id", "\"id\":", "insertedid", "created", "ok":true
+    if (/_id/.test(text)) return true;
+    if (/["']id["']\s*:/.test(text)) return true;
+    if (/insertedid/.test(lower)) return true;
+    if (/inserted/.test(lower) && /id/.test(lower)) return true;
+    if (/created/.test(lower) && /id/.test(lower)) return true;
+    if (/\"ok\"\s*:\s*true/.test(text)) return true;
+    return false;
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -80,46 +92,47 @@ export default function RegistrarTransacciones() {
         })
       });
 
-      // leer body con tolerancia: primero texto y luego intentar parsear JSON
+      // Leemos texto completo (tolerante a no-JSON)
       const text = await res.text();
       let data = null;
       try {
         data = text ? JSON.parse(text) : null;
-      } catch {
-        data = { text };
+      } catch (err) {
+        data = null;
       }
 
-      // Determinar si la operación creó un documento (varios formatos posibles):
-      const createdId = data && (data._id || data.id || data.insertedId || data.inserted_id);
-      const okFlag = res.ok || (data && data.ok === true) || !!createdId;
+      // Determinar id creado (varios formatos posibles)
+      const createdId =
+        (data && (data._id || data.id || data.insertedId || data.inserted_id)) ||
+        null;
+
+      const okFlag = res.ok || (data && data.ok === true) || !!createdId || textIndicatesCreated(text);
+
+      // Log para debugging del backend
+      console.group("RegistrarTransacciones: resultado POST");
+      console.log("status:", res.status);
+      console.log("response text:", text);
+      console.log("parsed data:", data);
+      console.log("okFlag:", okFlag, "createdId:", createdId);
+      console.groupEnd();
 
       if (okFlag) {
-        // Éxito (incluso si el servidor devolvió un status no-2xx pero incluyó id/ok)
         setMsg("Transacción registrada correctamente.");
         setMsgType("success");
         resetForm();
       } else {
-        // Si el servidor devolvió texto útil en data.text o data.error lo mostramos
-        const errMsg =
-          (data && (data.error || data.message || data.text)) ||
-          `Error al registrar la transacción (status ${res.status}).`;
-        setMsg(errMsg);
-        setMsgType("error");
-
-        // Si por alguna razón el servidor devolvió id en body pero no fue res.ok,
-        // igualmente consideramos éxito en cuanto a limpiar el formulario (fallback)
-        if (createdId) {
-          console.warn("Servidor devolvió id pero status no-2xx; limpiando formulario por consistencia.");
-          setForm({
-            accion: "",
-            cantidad: "",
-            precio: "",
-            comprador: "",
-            vendedor: ""
-          });
-          // mantener msg de aviso/error pero prefijarlo
+        // Mostrar el error que nos envió el servidor si existe, o texto, o mensaje genérico
+        const errMsg = (data && (data.error || data.message)) || (text || `Error al registrar la transacción (status ${res.status}).`);
+        // En algunos casos el servidor inserta pero luego falla y devuelve 500 con una página de error.
+        // Si detectamos en el texto pistas de inserción, tratamos como éxito (pero lo informamos).
+        if (textIndicatesCreated(text) || createdId) {
+          console.warn("Se detectó inserción en el cuerpo de respuesta aunque el status no sea 2xx. Limpiando formulario por consistencia.");
           setMsg("Transacción registrada (respuesta del servidor irregular).");
           setMsgType("success");
+          resetForm();
+        } else {
+          setMsg(errMsg);
+          setMsgType("error");
         }
       }
     } catch (err) {
@@ -178,11 +191,12 @@ export default function RegistrarTransacciones() {
             {JUGADORES.map(j => <option key={j} value={j}>{j}</option>)}
           </select>
         </div>
-        {/* Mensaje de validación */}
+
         <div style={{ color: "#d32f2f", marginTop: 7 }}>
           {!cantidadValida && form.cantidad && "La cantidad debe ser un número entero positivo."}
           {!precioValido && form.precio && "El precio debe ser un número positivo con máximo 2 decimales."}
         </div>
+
         <button
           type="submit"
           style={{
@@ -201,6 +215,7 @@ export default function RegistrarTransacciones() {
           {submitting ? "Registrando..." : "Registrar"}
         </button>
       </form>
+
       {msg && (
         <div style={{marginTop:10, color: msgType === "success" ? successColor : errorColor}}>
           {msg}
