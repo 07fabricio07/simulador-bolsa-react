@@ -13,6 +13,7 @@ export default function BaseDeDatos() {
     if (coleccion === "intenciones") endpoint = "/intenciones-de-venta";
     if (coleccion === "historial") endpoint = "/historial";
     if (coleccion === "historialLimpio") endpoint = "/historial-limpio";
+    if (coleccion === "registrosRegistrador") endpoint = "/registros-registrador";
     try {
       const res = await fetch(BACKEND_URL + "/api/admin-limpieza" + endpoint, {
         method: "DELETE"
@@ -50,6 +51,14 @@ export default function BaseDeDatos() {
         disabled={loading}
       >
         Limpieza de Historial Limpio BD
+      </button>
+      <br />
+      <button
+        style={{margin: "10px 0", padding: "10px 20px"}}
+        onClick={() => limpiar("registrosRegistrador")}
+        disabled={loading}
+      >
+        Limpieza de RegistrosRegistrador
       </button>
       <br />
       {loading && <div style={{color:"#888"}}>Procesando...</div>}
