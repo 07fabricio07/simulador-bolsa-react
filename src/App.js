@@ -6,7 +6,7 @@ import BaseDeDatos from "./BaseDeDatos";
 import Informacion from "./Informacion";
 import Login from "./components/Login";
 import PortafolioInicial from "./PortafolioInicial";
-import PortafolioJugadores from "./PortafolioJugadores";
+// import PortafolioJugadores removed as requested
 import Graficos from "./Graficos";
 import ComprarAcciones from "./ComprarAcciones";
 
@@ -15,7 +15,7 @@ import RevisarPortafolioJugadores from "./RevisarPortafolioJugadores";
 import RegistrarTransacciones from "./RegistrarTransacciones";
 import TransaccionesRegistradas from "./TransaccionesRegistradas";
 
-// Nuevo componente Ranking
+// Nuevo componente Ranking (si lo tienes)
 import Ranking from "./Ranking";
 
 function Tab({ label, active, onClick }) {
@@ -150,8 +150,8 @@ function App() {
     { label: "Base de datos", content: <BaseDeDatos intencionesVenta={intencionesVenta} comprasEnProceso={comprasEnProceso}/> },
     { label: "Información", content: <Informacion {...informacionProps} /> },
     { label: "Portafolio inicial", content: <PortafolioInicial /> },
-    { label: "Portafolio de Jugadores", content: <PortafolioJugadores /> },
-    { label: "Ranking", content: <Ranking /> } // <-- nueva pestaña para admin
+    // removed "Portafolio de Jugadores" tab as requested
+    { label: "Ranking", content: <Ranking /> } // <-- si no quieres Ranking, puedes quitar esta línea
   ];
 
   // NUEVAS PESTAÑAS PARA REGISTRADOR
