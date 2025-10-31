@@ -5,10 +5,16 @@ const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
 function normalizePayload(payload) {
   if (!payload) return [];
   if (Array.isArray(payload)) return payload;
+  // support common shapes
+  if (payload.registros && Array.isArray(payload.registros)) return payload.registros;
   if (payload.filas && Array.isArray(payload.filas)) return payload.filas;
   if (payload.data && Array.isArray(payload.data)) return payload.data;
   if (payload && payload.fila) return Array.isArray(payload.fila) ? payload.fila : [payload.fila];
   if (payload && typeof payload === "object" && payload.id != null) return [payload];
+  // fallback: if any property of payload is an array, return the first such array
+  for (const val of Object.values(payload)) {
+    if (Array.isArray(val)) return val;
+  }
   return [];
 }
 
@@ -61,7 +67,6 @@ async function tryFetchFirstWorking(endpoints) {
       }
     } catch (err) {
       // ignore and try next
-      // console.warn("fetch failed for", ep, err);
     }
   }
   return null;
@@ -110,7 +115,6 @@ export default function ExportHistorialButton({ endpoint = "/api/historial", fil
   };
 
   const handleExportHistorial = async () => {
-    // history uses a single known endpoint by default; try the given endpoint first, then fallbacks
     const candidates = [endpoint, "/api/historial", "/api/historial-limpio"];
     await handleExportGeneric(candidates, filenamePrefix, setLoadingHist, setMsgHist);
   };
