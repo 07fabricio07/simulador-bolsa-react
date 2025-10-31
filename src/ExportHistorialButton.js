@@ -1,4 +1,3 @@
-// Nuevo componente: ExportHistorialButton.js
 import React, { useState } from "react";
 
 const BACKEND_URL = "https://simulador-bolsa-backend.onrender.com";
@@ -16,7 +15,6 @@ function normalizePayload(payload) {
 function jsonToCsv(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return "";
 
-  // Collect union of keys (preserve insertion order roughly)
   const keySet = new Set();
   rows.forEach(r => {
     if (r && typeof r === "object") {
@@ -25,11 +23,9 @@ function jsonToCsv(rows) {
   });
   const keys = Array.from(keySet);
 
-  // CSV header
   const escape = (v) => {
     if (v === null || v === undefined) return "";
     const s = String(v);
-    // Escape quotes by doubling, wrap in quotes if contains comma/quote/newline
     const needsQuote = /[",\n\r]/.test(s);
     const escaped = s.replace(/"/g, '""');
     return needsQuote ? `"${escaped}"` : escaped;
@@ -39,7 +35,6 @@ function jsonToCsv(rows) {
   const lines = rows.map(row => {
     return keys.map(k => {
       const v = row[k];
-      // If object/array - stringify JSON compactly
       if (v && typeof v === "object") return escape(JSON.stringify(v));
       return escape(v);
     }).join(",");
@@ -59,12 +54,12 @@ export default function ExportHistorialButton({ endpoint = "/api/historial", fil
       const res = await fetch(`${BACKEND_URL}${endpoint}`, {
         headers: {
           "Accept": "application/json"
-          // Si tu API necesita token, añade aquí la cabecera, por ejemplo:
+          // Si tu API necesita token, añade la cabecera aquí:
           // "Authorization": `Bearer ${localStorage.getItem('token')}`
         }
       });
       if (!res.ok) {
-        const txt = await res.text().catch(()=>"");
+        const txt = await res.text().catch(() => "");
         throw new Error(`Error ${res.status} al obtener datos: ${txt}`);
       }
       const data = await res.json();
@@ -78,7 +73,6 @@ export default function ExportHistorialButton({ endpoint = "/api/historial", fil
       const ts = new Date().toISOString().replace(/[:.]/g, "-");
       const fname = `${filenamePrefix}_${ts}.csv`;
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      // Create a link and trigger download
       const link = document.createElement("a");
       const url = URL.createObjectURL(blob);
       link.setAttribute("href", url);
