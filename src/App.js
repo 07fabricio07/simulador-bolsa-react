@@ -6,7 +6,7 @@ import BaseDeDatos from "./BaseDeDatos";
 import Informacion from "./Informacion";
 import Login from "./components/Login";
 import PortafolioInicial from "./PortafolioInicial";
-// import PortafolioJugadores removed as requested
+// import PortafolioJugadores if you still need it elsewhere
 import Graficos from "./Graficos";
 import ComprarAcciones from "./ComprarAcciones";
 
@@ -15,8 +15,11 @@ import RevisarPortafolioJugadores from "./RevisarPortafolioJugadores";
 import RegistrarTransacciones from "./RegistrarTransacciones";
 import TransaccionesRegistradas from "./TransaccionesRegistradas";
 
-// Nuevo componente Ranking (si lo tienes)
+// Ranking kept if you use it
 import Ranking from "./Ranking";
+
+// NEW: Export button component (ensure src/ExportHistorialButton.js exists)
+import ExportHistorialButton from "./ExportHistorialButton";
 
 function Tab({ label, active, onClick }) {
   return (
@@ -24,12 +27,14 @@ function Tab({ label, active, onClick }) {
       type="button"
       aria-selected={active}
       style={{
-        padding: "1em",
+        padding: "0.6em 0.9em",
         border: "none",
         borderBottom: active ? "2px solid #007bff" : "2px solid #ccc",
         background: "none",
         fontWeight: active ? "bold" : "normal",
-        cursor: "pointer"
+        cursor: "pointer",
+        flex: "0 0 auto",
+        whiteSpace: "nowrap"
       }}
       onClick={onClick}
     >
@@ -150,8 +155,9 @@ function App() {
     { label: "Base de datos", content: <BaseDeDatos intencionesVenta={intencionesVenta} comprasEnProceso={comprasEnProceso}/> },
     { label: "Información", content: <Informacion {...informacionProps} /> },
     { label: "Portafolio inicial", content: <PortafolioInicial /> },
-    // removed "Portafolio de Jugadores" tab as requested
-    { label: "Ranking", content: <Ranking /> } // <-- si no quieres Ranking, puedes quitar esta línea
+    // Removed "Portafolio de Jugadores" tab per request (so the tabs list is shorter)
+    { label: "Ranking", content: <Ranking /> },
+    { label: "Exportar Historial", content: <ExportHistorialButton /> } // <-- new tab for export CSV
   ];
 
   // NUEVAS PESTAÑAS PARA REGISTRADOR
@@ -215,7 +221,16 @@ function App() {
         </button>
       </p>
       <hr />
-      <div style={{ display: "flex", borderBottom: "2px solid #ccc", marginBottom: "1em" }}>
+      <div
+        style={{
+          display: "flex",
+          borderBottom: "2px solid #ccc",
+          marginBottom: "1em",
+          overflowX: "auto",
+          flexWrap: "nowrap",
+          WebkitOverflowScrolling: "touch"
+        }}
+      >
         {tabs.map((tab, idx) => (
           <Tab
             key={tab.label}
@@ -226,7 +241,7 @@ function App() {
         ))}
       </div>
       <div style={{ padding: "2em", background: "#f8f8f8", borderRadius: "6px" }}>
-        {tabs[activeTab].content}
+        {tabs[activeTab] && tabs[activeTab].content}
       </div>
     </div>
   );
