@@ -43,35 +43,54 @@ function jsonToCsv(rows) {
   return [header, ...lines].join("\r\n");
 }
 
-export default function ExportHistorialButton({ endpoint = "/api/historial", filenamePrefix = "historial" }) {
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState("");
-
-  const handleExport = async () => {
-    setLoading(true);
-    setMsg("");
+async function tryFetchFirstWorking(endpoints) {
+  // Try endpoints in sequence, return response.json() of first that returns ok
+  for (const ep of endpoints) {
     try {
-      const res = await fetch(`${BACKEND_URL}${endpoint}`, {
+      const res = await fetch(`${BACKEND_URL}${ep}`, {
         headers: {
           "Accept": "application/json"
-          // Si tu API necesita token, añade la cabecera aquí:
+          // Si tu API necesita token, añade aquí la cabecera:
           // "Authorization": `Bearer ${localStorage.getItem('token')}`
         }
       });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(`Error ${res.status} al obtener datos: ${txt}`);
+      if (res.ok) {
+        // try to parse json safely
+        const data = await res.json().catch(() => null);
+        return { data, endpoint: ep };
       }
-      const data = await res.json();
-      const rows = normalizePayload(data);
+    } catch (err) {
+      // ignore and try next
+      // console.warn("fetch failed for", ep, err);
+    }
+  }
+  return null;
+}
+
+export default function ExportHistorialButton({ endpoint = "/api/historial", filenamePrefix = "historial" }) {
+  const [loadingHist, setLoadingHist] = useState(false);
+  const [msgHist, setMsgHist] = useState("");
+
+  const [loadingRegs, setLoadingRegs] = useState(false);
+  const [msgRegs, setMsgRegs] = useState("");
+
+  const handleExportGeneric = async (endpointsCandidates, prefix, setLoading, setMsg) => {
+    setLoading(true);
+    setMsg("");
+    try {
+      const attempt = await tryFetchFirstWorking(endpointsCandidates);
+      if (!attempt || !attempt.data) {
+        throw new Error("No se pudo obtener datos desde el servidor (probadas: " + endpointsCandidates.join(", ") + ")");
+      }
+      const rows = normalizePayload(attempt.data);
       if (!rows || rows.length === 0) {
-        setMsg("No hay datos para exportar.");
+        setMsg("No hay datos para exportar desde " + attempt.endpoint);
         setLoading(false);
         return;
       }
       const csv = jsonToCsv(rows);
       const ts = new Date().toISOString().replace(/[:.]/g, "-");
-      const fname = `${filenamePrefix}_${ts}.csv`;
+      const fname = `${prefix}_${ts}.csv`;
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const link = document.createElement("a");
       const url = URL.createObjectURL(blob);
@@ -81,7 +100,7 @@ export default function ExportHistorialButton({ endpoint = "/api/historial", fil
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      setMsg(`Exportado ${rows.length} filas a ${fname}`);
+      setMsg(`Exportado ${rows.length} filas a ${fname} (endpoint: ${attempt.endpoint})`);
     } catch (err) {
       console.error("Export error:", err);
       setMsg(`Error exportando CSV: ${err.message || err}`);
@@ -90,25 +109,69 @@ export default function ExportHistorialButton({ endpoint = "/api/historial", fil
     }
   };
 
+  const handleExportHistorial = async () => {
+    // history uses a single known endpoint by default; try the given endpoint first, then fallbacks
+    const candidates = [endpoint, "/api/historial", "/api/historial-limpio"];
+    await handleExportGeneric(candidates, filenamePrefix, setLoadingHist, setMsgHist);
+  };
+
+  const handleExportRegistros = async () => {
+    // try a few possible route names for "RegistrosRegistrador"
+    const candidates = [
+      "/api/registros-registrador",
+      "/api/registrosregistrador",
+      "/api/registrosRegistrador",
+      "/api/RegistrosRegistrador",
+      "/api/registros_registrador",
+      "/api/registros-registrador-limpio",
+      "/api/registros"
+    ];
+    await handleExportGeneric(candidates, "registros_registrador", setLoadingRegs, setMsgRegs);
+  };
+
   return (
     <div>
-      <button
-        onClick={handleExport}
-        disabled={loading}
-        style={{
-          padding: "8px 14px",
-          background: loading ? "#ccc" : "#007bff",
-          color: "#fff",
-          border: "none",
-          borderRadius: 4,
-          cursor: loading ? "not-allowed" : "pointer"
-        }}
-      >
-        {loading ? "Obteniendo..." : "Exportar Historial (CSV)"}
-      </button>
-      {msg && <div style={{ marginTop: 8, color: msg.startsWith("Error") ? "#d32f2f" : "#2e7d32" }}>{msg}</div>}
-      <div style={{ marginTop: 6, color: "#666", fontSize: 13 }}>
-        Nota: descarga los datos actuales de la colección Historial en formato CSV.
+      <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div>
+          <button
+            onClick={handleExportHistorial}
+            disabled={loadingHist}
+            style={{
+              padding: "8px 14px",
+              background: loadingHist ? "#ccc" : "#007bff",
+              color: "#fff",
+              border: "none",
+              borderRadius: 4,
+              cursor: loadingHist ? "not-allowed" : "pointer"
+            }}
+          >
+            {loadingHist ? "Obteniendo historial..." : "Exportar Historial (CSV)"}
+          </button>
+          {msgHist && <div style={{ marginTop: 8, color: msgHist.startsWith("Error") ? "#d32f2f" : "#2e7d32" }}>{msgHist}</div>}
+        </div>
+
+        <div>
+          <button
+            onClick={handleExportRegistros}
+            disabled={loadingRegs}
+            style={{
+              padding: "8px 14px",
+              background: loadingRegs ? "#ccc" : "#6a1b9a",
+              color: "#fff",
+              border: "none",
+              borderRadius: 4,
+              cursor: loadingRegs ? "not-allowed" : "pointer"
+            }}
+          >
+            {loadingRegs ? "Obteniendo registros..." : "Exportar Registros Registrador (CSV)"}
+          </button>
+          {msgRegs && <div style={{ marginTop: 8, color: msgRegs.startsWith("Error") ? "#d32f2f" : "#2e7d32" }}>{msgRegs}</div>}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 10, color: "#666", fontSize: 13 }}>
+        Nota: cada botón intenta obtener los datos desde el backend y descargar un archivo CSV. Si tu API requiere autenticación,
+        añade la cabecera Authorization en la función tryFetchFirstWorking (línea comentada).
       </div>
     </div>
   );
