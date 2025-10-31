@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import CompraVentaAcciones from "./CompraVentaAcciones";
 import MiPortafolio from "./MiPortafolio";
 import Parametros from "./Parametros";
@@ -21,6 +21,8 @@ import Ranking from "./Ranking";
 function Tab({ label, active, onClick }) {
   return (
     <button
+      type="button"
+      aria-selected={active}
       style={{
         padding: "1em",
         border: "none",
@@ -71,11 +73,16 @@ function App() {
     }
     setEstado("en pausa");
   };
-  React.useEffect(() => {
+  useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
+
+  // Reiniciar la pestaña activa cuando cambia el usuario (evita índices inválidos entre roles)
+  useEffect(() => {
+    setActiveTab(0);
+  }, [usuarioActual]);
 
   // Props para parámetros
   const parametrosProps = {
